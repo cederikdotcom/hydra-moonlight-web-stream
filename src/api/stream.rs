@@ -47,13 +47,16 @@ pub async fn start_host(
             message = match stream.recv().await {
                 Some(Ok(Message::Text(text))) => text,
                 Some(Ok(Message::Binary(_))) => {
+                    warn!("[Stream] Unexpected binary message during WebSocket init");
                     return;
                 }
                 Some(Ok(_)) => continue,
-                Some(Err(_)) => {
+                Some(Err(err)) => {
+                    warn!("[Stream] WebSocket receive error during init: {err}");
                     return;
                 }
                 None => {
+                    warn!("[Stream] WebSocket closed during init");
                     return;
                 }
             };
@@ -62,7 +65,8 @@ pub async fn start_host(
 
         let message = match serde_json::from_str::<StreamClientMessage>(&message) {
             Ok(value) => value,
-            Err(_) => {
+            Err(err) => {
+                warn!("[Stream] Failed to parse init message: {err}");
                 return;
             }
         };

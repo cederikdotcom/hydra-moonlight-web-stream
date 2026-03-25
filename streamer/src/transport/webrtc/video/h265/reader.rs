@@ -45,9 +45,8 @@ impl NalHeader {
 
         Self {
             forbidden_zero_bit,
-            // It's impossible for this to fail because we only have 6 bits like the enum
-            #[allow(clippy::unwrap_used)]
-            nal_unit_type: NalUnitType::from_u8(nal_unit_type).unwrap(),
+            nal_unit_type: NalUnitType::from_u8(nal_unit_type)
+                .unwrap_or(NalUnitType::TrailN), // fallback for unknown NAL types
             nuh_layer_id,
             nuh_temporal_id_plus1,
         }

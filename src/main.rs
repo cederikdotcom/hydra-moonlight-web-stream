@@ -75,7 +75,10 @@ async fn main() {
 
             new_config
         }
-        Err(err) => panic!("failed to read file: {err}"),
+        Err(err) => {
+            eprintln!("fatal: failed to read config file: {err}");
+            std::process::exit(1);
+        }
     };
 
     match cli.command {
