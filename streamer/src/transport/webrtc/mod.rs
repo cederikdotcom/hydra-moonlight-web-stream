@@ -448,8 +448,10 @@ impl WebRtcInner {
                 let remote_ty = description.sdp_type;
 
                 if let Err(err) = self.peer.set_remote_description(description).await {
-                    error!("[Signaling]: failed to set remote description: {err:?}");
-                    return;
+                    // Log as warning, not error — a duplicate answer arriving after the
+                    // state is already stable (from overlapping offer/answer exchanges)
+                    // is harmless and should not kill the stream.
+                    warn!("[Signaling]: failed to set remote description (non-fatal): {err:?}");
                 }
 
                 // If we received an offer (renegotiation from the browser),
