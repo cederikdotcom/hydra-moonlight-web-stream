@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     sync::{Arc, Weak},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::anyhow;
@@ -75,6 +75,8 @@ where
     channel_queue_size: usize,
     new_samples_notify: Arc<Notify>,
     queue: Arc<Mutex<VecDeque<FrameSamples<Track>>>>,
+    dropped_frame_count: u64,
+    last_drop_log: Instant,
 }
 
 struct FrameSamples<Track>
@@ -96,6 +98,8 @@ where
             channel_queue_size,
             new_samples_notify: Default::default(),
             queue: Default::default(),
+            dropped_frame_count: 0,
+            last_drop_log: Instant::now(),
         }
     }
 
@@ -139,7 +143,7 @@ where
     }
 
     /// Returns if the frame will be delivered
-    pub async fn send_samples(&self, samples: Vec<Track::Sample>, important: bool) -> bool {
+    pub async fn send_samples(&mut self, samples: Vec<Track::Sample>, important: bool) -> bool {
         let mut queue = self.queue.lock().await;
 
         let result = if important {
@@ -147,6 +151,16 @@ where
             true
         } else {
             if queue.len() > self.channel_queue_size {
+                self.dropped_frame_count += 1;
+                let elapsed = self.last_drop_log.elapsed();
+                if elapsed.as_secs() >= 30 {
+                    warn!(
+                        "[Stream] Dropped {} frames in last 30s (queue full)",
+                        self.dropped_frame_count
+                    );
+                    self.dropped_frame_count = 0;
+                    self.last_drop_log = Instant::now();
+                }
                 return false;
             }
 

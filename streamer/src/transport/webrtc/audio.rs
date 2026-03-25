@@ -54,7 +54,7 @@ impl WebRtcAudio {
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
     ) -> i32 {
-        const SUPPORTED_SAMPLE_RATES: &[u32] = &[80000, 12000, 16000, 24000, 48000];
+        const SUPPORTED_SAMPLE_RATES: &[u32] = &[80000, 12000, 16000, 24000, 44100, 48000];
         if !SUPPORTED_SAMPLE_RATES.contains(&stream_config.sample_rate) {
             warn!(
                 "[Stream] Audio could have problems because of the sample rate, Selected: {}, Expected one of: {SUPPORTED_SAMPLE_RATES:?}",
