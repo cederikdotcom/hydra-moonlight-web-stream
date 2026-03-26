@@ -1875,7 +1875,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common"
 version = "0.1.0"
-source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=7ab3e3f5ab50e21b64153bec2104ed2bac1f4313#7ab3e3f5ab50e21b64153bec2104ed2bac1f4313"
+source = "git+https://github.com/cederikdotcom/moonlight-common-rust.git?rev=a04b3085b2f4db5d3337f8d93da0adbbb3f5309f#a04b3085b2f4db5d3337f8d93da0adbbb3f5309f"
 dependencies = [
  "bitflags 2.11.0",
  "bytes",
@@ -1904,7 +1904,7 @@ dependencies = [
 [[package]]
 name = "moonlight-common-sys"
 version = "0.1.0"
-source = "git+https://github.com/MrCreativ3001/moonlight-common-rust.git?rev=7ab3e3f5ab50e21b64153bec2104ed2bac1f4313#7ab3e3f5ab50e21b64153bec2104ed2bac1f4313"
+source = "git+https://github.com/cederikdotcom/moonlight-common-rust.git?rev=a04b3085b2f4db5d3337f8d93da0adbbb3f5309f#a04b3085b2f4db5d3337f8d93da0adbbb3f5309f"
 dependencies = [
  "bindgen",
  "cmake",
