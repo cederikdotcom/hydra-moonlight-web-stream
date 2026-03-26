@@ -87,7 +87,7 @@ pub async fn new(
     audio_sample_queue_size: usize,
 ) -> Result<(WebRTCTransportSender, WebRTCTransportEvents), anyhow::Error> {
     // -- Configure WebRTC
-    let rtc_config = RTCConfiguration {
+    let mut rtc_config = RTCConfiguration {
         ice_servers: config
             .ice_servers
             .clone()
@@ -96,6 +96,9 @@ pub async fn new(
             .collect(),
         ..Default::default()
     };
+    if config.relay_only {
+        rtc_config.ice_transport_policy = webrtc::ice_transport::ice_transport_policy::RTCIceTransportPolicy::Relay;
+    }
     let mut api_settings = SettingEngine::default();
 
     if let Some(PortRange { min, max }) = config.port_range {

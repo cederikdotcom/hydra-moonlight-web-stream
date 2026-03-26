@@ -113,6 +113,8 @@ pub struct WebRtcConfig {
     pub network_types: Vec<WebRtcNetworkType>,
     #[serde(default = "default_include_loopback_candidates")]
     pub include_loopback_candidates: bool,
+    #[serde(default)]
+    pub relay_only: bool,
 }
 
 impl Default for WebRtcConfig {
@@ -124,6 +126,7 @@ impl Default for WebRtcConfig {
             nat_1to1: None,
             network_types: default_network_types(),
             include_loopback_candidates: default_include_loopback_candidates(),
+            relay_only: false,
         }
     }
 }
