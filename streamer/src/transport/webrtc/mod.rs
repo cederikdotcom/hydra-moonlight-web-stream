@@ -101,6 +101,15 @@ pub async fn new(
     }
     let mut api_settings = SettingEngine::default();
 
+    // Increase ICE timeouts for TURN relay stability. The default disconnected_timeout
+    // of 5s is too aggressive — TURN relay adds round-trip latency to keepalives, causing
+    // false disconnects when a few responses are slightly delayed.
+    api_settings.set_ice_timeouts(
+        std::time::Duration::from_secs(config.ice_disconnected_timeout_seconds),
+        std::time::Duration::from_secs(60),
+        std::time::Duration::from_secs(2),
+    );
+
     if let Some(PortRange { min, max }) = config.port_range {
         match EphemeralUDP::new(min, max) {
             Ok(udp) => {

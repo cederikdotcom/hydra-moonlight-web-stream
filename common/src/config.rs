@@ -115,6 +115,12 @@ pub struct WebRtcConfig {
     pub include_loopback_candidates: bool,
     #[serde(default)]
     pub relay_only: bool,
+    #[serde(default = "default_ice_disconnected_timeout_seconds")]
+    pub ice_disconnected_timeout_seconds: u64,
+}
+
+fn default_ice_disconnected_timeout_seconds() -> u64 {
+    15
 }
 
 impl Default for WebRtcConfig {
@@ -127,6 +133,7 @@ impl Default for WebRtcConfig {
             network_types: default_network_types(),
             include_loopback_candidates: default_include_loopback_candidates(),
             relay_only: false,
+            ice_disconnected_timeout_seconds: default_ice_disconnected_timeout_seconds(),
         }
     }
 }
