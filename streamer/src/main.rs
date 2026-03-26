@@ -68,7 +68,7 @@ use crate::{
 
 pub type RequestClient = TokioHyperClient;
 
-pub const TIMEOUT_DURATION: Duration = Duration::from_secs(10);
+pub const TIMEOUT_DURATION: Duration = Duration::from_secs(20);
 
 mod audio;
 mod buffer;
