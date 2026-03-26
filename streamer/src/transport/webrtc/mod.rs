@@ -97,7 +97,7 @@ pub async fn new(
         ..Default::default()
     };
     if config.relay_only {
-        rtc_config.ice_transport_policy = webrtc::ice_transport::ice_transport_policy::RTCIceTransportPolicy::Relay;
+        rtc_config.ice_transport_policy = webrtc::peer_connection::policy::ice_transport_policy::RTCIceTransportPolicy::Relay;
     }
     let mut api_settings = SettingEngine::default();
 
