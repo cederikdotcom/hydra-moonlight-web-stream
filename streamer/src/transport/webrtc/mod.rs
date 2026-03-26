@@ -104,10 +104,12 @@ pub async fn new(
     // Increase ICE timeouts for TURN relay stability. The default disconnected_timeout
     // of 5s is too aggressive — TURN relay adds round-trip latency to keepalives, causing
     // false disconnects when a few responses are slightly delayed.
+    // Keepalive at 4s (default 2s) reduces relay congestion — the browser's own keepalive
+    // (~2.5s) handles primary consent freshness.
     api_settings.set_ice_timeouts(
         Some(std::time::Duration::from_secs(config.ice_disconnected_timeout_seconds)),
         Some(std::time::Duration::from_secs(60)),
-        Some(std::time::Duration::from_secs(2)),
+        Some(std::time::Duration::from_secs(4)),
     );
 
     if let Some(PortRange { min, max }) = config.port_range {
