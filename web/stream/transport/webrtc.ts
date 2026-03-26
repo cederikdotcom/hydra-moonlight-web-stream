@@ -38,13 +38,6 @@ export class WebRTCTransport implements Transport {
         this.peer.addEventListener("track", this.onTrack.bind(this))
         this.peer.addEventListener("datachannel", this.onDataChannel.bind(this))
 
-        // Pre-negotiate media transceivers in the initial offer to avoid a
-        // mid-session renegotiation when the server adds video/audio tracks.
-        // The renegotiation disrupts ICE consent freshness and causes a
-        // consistent disconnect at ~8.5 seconds.
-        this.peer.addTransceiver('video', { direction: 'recvonly' })
-        this.peer.addTransceiver('audio', { direction: 'recvonly' })
-
         this.initChannels()
 
         // Maybe we already received data
