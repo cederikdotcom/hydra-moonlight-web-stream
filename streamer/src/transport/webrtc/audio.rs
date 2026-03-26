@@ -21,7 +21,7 @@ pub fn register_audio_codecs(media_engine: &mut MediaEngine) -> Result<(), webrt
                 mime_type: MIME_TYPE_OPUS.to_owned(),
                 clock_rate: 48000,
                 channels: 2,
-                sdp_fmtp_line: "minptime=10;useinbandfec=1".to_owned(),
+                sdp_fmtp_line: "minptime=10;useinbandfec=1;maxaveragebitrate=510000;stereo=1;sprop-stereo=1".to_owned(),
                 rtcp_feedback: vec![],
             },
             payload_type: 111,
@@ -54,7 +54,7 @@ impl WebRtcAudio {
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
     ) -> i32 {
-        const SUPPORTED_SAMPLE_RATES: &[u32] = &[80000, 12000, 16000, 24000, 44100, 48000];
+        const SUPPORTED_SAMPLE_RATES: &[u32] = &[8000, 12000, 16000, 24000, 44100, 48000];
         if !SUPPORTED_SAMPLE_RATES.contains(&stream_config.sample_rate) {
             warn!(
                 "[Stream] Audio could have problems because of the sample rate, Selected: {}, Expected one of: {SUPPORTED_SAMPLE_RATES:?}",

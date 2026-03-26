@@ -293,9 +293,11 @@ export class WebRTCTransport implements Transport {
             this.videoReceiver = receiver
         }
 
-        receiver.jitterBufferTarget = 0
-        if ("playoutDelayHint" in receiver) {
-            receiver.playoutDelayHint = 0
+        if (track.kind == "video") {
+            receiver.jitterBufferTarget = 0
+            if ("playoutDelayHint" in receiver) {
+                receiver.playoutDelayHint = 0
+            }
         }
 
         this.logger?.debug(`Adding receiver: ${track.kind}, ${track.id}, ${track.label}`)
@@ -311,6 +313,10 @@ export class WebRTCTransport implements Transport {
             }
             this.videoTrackHolder.ontrack()
         } else if (track.kind == "audio") {
+            if ("contentHint" in track) {
+                track.contentHint = "music"
+            }
+
             this.audioTrackHolder.track = track
             if (!this.audioTrackHolder.ontrack) {
                 throw "No audio track listener registered!"
