@@ -9,41 +9,52 @@ export class AudioElementPlayer implements TrackAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
         return {
-            environmentSupported: "HTMLAudioElement" in globalObject() && "srcObject" in HTMLAudioElement.prototype,
+            environmentSupported: "AudioContext" in globalObject() && "MediaStreamAudioSourceNode" in globalObject(),
         }
     }
 
     readonly implementationName: string = "audio_element"
 
-    private audioElement = document.createElement("audio")
+    private audioContext: AudioContext | null = null
+    private sourceNode: MediaStreamAudioSourceNode | null = null
     private oldTrack: MediaStreamTrack | null = null
     private stream = new MediaStream()
+    private activated = false
 
     constructor() {
         this.implementationName = "audio_element"
-
-        this.audioElement.classList.add("audio-stream")
-        this.audioElement.preload = "none"
-        this.audioElement.controls = false
-        this.audioElement.autoplay = true
-        this.audioElement.muted = true
-        this.audioElement.srcObject = this.stream
-
         addPipePassthrough(this)
     }
 
-    setup(_setup: AudioPlayerSetup) {
+    setup(setup: AudioPlayerSetup) {
+        this.audioContext = new AudioContext({
+            latencyHint: "playback",
+            sampleRate: setup.sampleRate
+        })
+        // Suspend until user interaction to comply with autoplay policy
+        this.audioContext.suspend()
         return true
     }
     cleanup(): void {
+        if (this.sourceNode) {
+            this.sourceNode.disconnect()
+            this.sourceNode = null
+        }
         if (this.oldTrack) {
             this.stream.removeTrack(this.oldTrack)
             this.oldTrack = null
         }
-        this.audioElement.srcObject = null
+        if (this.audioContext) {
+            this.audioContext.close()
+            this.audioContext = null
+        }
     }
 
     setTrack(track: MediaStreamTrack): void {
+        if (this.sourceNode) {
+            this.sourceNode.disconnect()
+            this.sourceNode = null
+        }
         if (this.oldTrack) {
             this.stream.removeTrack(this.oldTrack)
             this.oldTrack = null
@@ -51,17 +62,23 @@ export class AudioElementPlayer implements TrackAudioPlayer {
 
         this.stream.addTrack(track)
         this.oldTrack = track
+
+        if (this.audioContext) {
+            this.sourceNode = this.audioContext.createMediaStreamSource(this.stream)
+            this.sourceNode.connect(this.audioContext.destination)
+        }
     }
 
     onUserInteraction(): void {
-        this.audioElement.muted = false
+        if (!this.activated && this.audioContext) {
+            this.audioContext.resume()
+            this.activated = true
+        }
     }
 
-    mount(parent: HTMLElement): void {
-        parent.appendChild(this.audioElement)
+    mount(_parent: HTMLElement): void {
     }
-    unmount(parent: HTMLElement): void {
-        parent.removeChild(this.audioElement)
+    unmount(_parent: HTMLElement): void {
     }
 
     getBase(): Pipe | null {
