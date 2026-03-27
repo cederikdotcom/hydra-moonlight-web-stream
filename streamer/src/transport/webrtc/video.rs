@@ -5,6 +5,7 @@ use std::{
         Arc, Weak,
         atomic::{AtomicBool, Ordering},
     },
+    time::Duration,
 };
 
 use bytes::{Bytes, BytesMut};
@@ -229,6 +230,17 @@ impl WebRtcVideo {
 
         let important = matches!(unit.frame_type, FrameType::Idr);
 
+        self.send_frame_data(full_frame, timestamp, important).await
+    }
+
+    /// Send a pre-concatenated video frame. Used by the channel-based delivery
+    /// path to avoid reconstructing VideoDecodeUnit from owned data.
+    pub async fn send_owned_frame(&mut self, frame_data: Vec<u8>, timestamp: Duration, is_idr: bool) -> DecodeResult {
+        let timestamp_rtp = (timestamp.as_nanos() * 90000 / 1_000_000_000) as u32;
+        self.send_frame_data(frame_data, timestamp_rtp, is_idr).await
+    }
+
+    async fn send_frame_data(&mut self, full_frame: Vec<u8>, timestamp: u32, important: bool) -> DecodeResult {
         match &mut self.codec {
             // -- H264
             Some(VideoCodec::H264 {

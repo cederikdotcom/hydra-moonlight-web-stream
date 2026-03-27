@@ -202,6 +202,44 @@ impl TransportSender for WebSocketTransportSender {
         Ok(DecodeResult::Ok)
     }
 
+    async fn send_owned_video_frame(
+        &self,
+        frame_data: Vec<u8>,
+        timestamp: std::time::Duration,
+        is_idr: bool,
+    ) -> Result<DecodeResult, TransportError> {
+        let mut new_buffer = vec![0; 5];
+
+        let mut byte_buffer = ByteBuffer::new(new_buffer.as_mut_slice());
+        byte_buffer.put_u8(TransportChannelId::HOST_VIDEO);
+        byte_buffer.put_u8(if is_idr { 1 } else { 0 });
+        byte_buffer.put_u8(0);
+        byte_buffer.put_u32(timestamp.as_micros() as u32);
+
+        new_buffer.extend_from_slice(&frame_data);
+
+        if self
+            .event_sender
+            .send(TransportEvent::SendIpc(
+                StreamerIpcMessage::WebSocketTransport(Bytes::from(new_buffer)),
+            ))
+            .await
+            .is_err()
+        {
+            return Err(TransportError::Closed);
+        }
+
+        if self
+            .needs_idr
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            return Ok(DecodeResult::NeedIdr);
+        }
+
+        Ok(DecodeResult::Ok)
+    }
+
     async fn setup_audio(
         &self,
         _audio_config: AudioConfig,

@@ -629,6 +629,15 @@ pub trait TransportSender {
         unit: &'a VideoDecodeUnit<'a>,
     ) -> Result<DecodeResult, TransportError>;
 
+    /// Send a pre-concatenated video frame with owned data.
+    /// Used by the channel-based delivery path to avoid reconstructing VideoDecodeUnit.
+    async fn send_owned_video_frame(
+        &self,
+        frame_data: Vec<u8>,
+        timestamp: std::time::Duration,
+        is_idr: bool,
+    ) -> Result<DecodeResult, TransportError>;
+
     async fn setup_audio(
         &self,
         audio_config: AudioConfig,

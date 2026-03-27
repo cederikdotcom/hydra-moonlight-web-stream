@@ -676,6 +676,16 @@ impl TransportSender for WebRTCTransportSender {
         Ok(video.send_decode_unit(unit).await)
     }
 
+    async fn send_owned_video_frame(
+        &self,
+        frame_data: Vec<u8>,
+        timestamp: std::time::Duration,
+        is_idr: bool,
+    ) -> Result<DecodeResult, TransportError> {
+        let mut video = self.inner.video.lock().await;
+        Ok(video.send_owned_frame(frame_data, timestamp, is_idr).await)
+    }
+
     async fn setup_audio(
         &self,
         audio_config: AudioConfig,

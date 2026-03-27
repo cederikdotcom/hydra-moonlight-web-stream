@@ -8,7 +8,7 @@ use log::{debug, error, warn};
 use moonlight_common::stream::{
     c::bindings::EstimatedRttInfo,
     video::{
-        DecodeResult, FrameType, SupportedVideoFormats, VideoCapabilities, VideoDecodeUnit,
+        DecodeResult, SupportedVideoFormats, VideoCapabilities, VideoDecodeUnit,
         VideoDecoder, VideoSetup,
     },
 };
@@ -22,8 +22,7 @@ use crate::{StreamConnection, transport::OutboundPacket};
 pub(crate) struct OwnedVideoFrame {
     pub frame_data: Vec<u8>,
     pub timestamp: Duration,
-    pub frame_type: FrameType,
-    pub frame_processing_latency: Option<Duration>,
+    pub is_idr: bool,
 }
 
 pub(crate) struct StreamVideoDecoder {
@@ -84,20 +83,11 @@ impl VideoDecoder for StreamVideoDecoder {
 
                 let mut transport = stream.transport_sender.lock().await;
                 if let Some(transport) = transport.as_mut() {
-                    // Reconstruct a VideoDecodeUnit from our owned frame.
-                    // send_decode_unit in webrtc/video.rs copies buffers anyway,
-                    // so this extra indirection has zero additional cost.
-                    let buffer = moonlight_common::stream::video::VideoDecodeBuffer {
-                        data: &frame.frame_data,
-                    };
-                    let unit = VideoDecodeUnit {
-                        buffers: &[buffer],
-                        timestamp: frame.timestamp,
-                        frame_type: frame.frame_type,
-                        frame_processing_latency: frame.frame_processing_latency,
-                    };
-                    if let Err(err) = transport.send_video_unit(&unit).await {
-                        warn!("Failed to send video decode unit: {err}");
+                    if let Err(err) = transport
+                        .send_owned_video_frame(frame.frame_data, frame.timestamp, frame.is_idr)
+                        .await
+                    {
+                        warn!("Failed to send video frame: {err}");
                     }
                 }
             }
@@ -126,8 +116,7 @@ impl VideoDecoder for StreamVideoDecoder {
         let owned_frame = OwnedVideoFrame {
             frame_data,
             timestamp: unit.timestamp,
-            frame_type: unit.frame_type,
-            frame_processing_latency: unit.frame_processing_latency,
+            is_idr: matches!(unit.frame_type, moonlight_common::stream::video::FrameType::Idr),
         };
 
         // Non-blocking send — if channel is full, drop the frame.
