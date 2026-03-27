@@ -8,17 +8,41 @@ use log::{debug, error, warn};
 use moonlight_common::stream::{
     c::bindings::EstimatedRttInfo,
     video::{
-        DecodeResult, SupportedVideoFormats, VideoCapabilities, VideoDecodeUnit, VideoDecoder,
-        VideoSetup,
+        DecodeResult, FrameType, SupportedVideoFormats, VideoCapabilities, VideoDecodeUnit,
+        VideoDecoder, VideoSetup,
     },
 };
+use tokio::sync::mpsc;
 
 use crate::{StreamConnection, transport::OutboundPacket};
+
+/// Owned copy of a video frame for channel-based delivery.
+/// VideoDecodeUnit has borrowed buffers from C — we copy them here so the
+/// consumer task can process asynchronously without blocking the C callback thread.
+pub(crate) struct OwnedVideoFrame {
+    pub frame_data: Vec<u8>,
+    pub timestamp: Duration,
+    pub frame_type: FrameType,
+    pub frame_processing_latency: Option<Duration>,
+}
 
 pub(crate) struct StreamVideoDecoder {
     pub(crate) stream: Weak<StreamConnection>,
     pub(crate) supported_formats: SupportedVideoFormats,
     pub(crate) stats: VideoStats,
+    /// Channel sender for non-blocking frame delivery to the async consumer task.
+    video_frame_sender: Option<mpsc::Sender<OwnedVideoFrame>>,
+}
+
+impl StreamVideoDecoder {
+    pub(crate) fn new(stream: Weak<StreamConnection>, supported_formats: SupportedVideoFormats) -> Self {
+        Self {
+            stream,
+            supported_formats,
+            stats: VideoStats::default(),
+            video_frame_sender: None,
+        }
+    }
 }
 
 impl VideoDecoder for StreamVideoDecoder {
@@ -33,18 +57,53 @@ impl VideoDecoder for StreamVideoDecoder {
             stream_info.video = Some(setup);
         }
 
-        {
-            stream.runtime.clone().block_on(async move {
-                let mut sender = stream.transport_sender.lock().await;
+        // Setup still uses block_on (one-time call, acceptable)
+        let result = stream.runtime.clone().block_on(async {
+            let mut sender = stream.transport_sender.lock().await;
 
-                if let Some(sender) = sender.as_mut() {
-                    sender.setup_video(setup).await
-                } else {
-                    error!("Failed to setup video because of missing transport!");
-                    -1
+            if let Some(sender) = sender.as_mut() {
+                sender.setup_video(setup).await
+            } else {
+                error!("Failed to setup video because of missing transport!");
+                -1
+            }
+        });
+
+        // Spawn the consumer task that reads frames from the channel and sends
+        // them via the transport. This decouples the C callback thread from
+        // the async WebRTC send path, preventing tokio worker thread starvation.
+        let (sender, mut receiver) = mpsc::channel::<OwnedVideoFrame>(2);
+        self.video_frame_sender = Some(sender);
+
+        let consumer_stream = self.stream.clone();
+        stream.runtime.spawn(async move {
+            while let Some(frame) = receiver.recv().await {
+                let Some(stream) = consumer_stream.upgrade() else {
+                    break;
+                };
+
+                let mut transport = stream.transport_sender.lock().await;
+                if let Some(transport) = transport.as_mut() {
+                    // Reconstruct a VideoDecodeUnit from our owned frame.
+                    // send_decode_unit in webrtc/video.rs copies buffers anyway,
+                    // so this extra indirection has zero additional cost.
+                    let buffer = moonlight_common::stream::video::VideoDecodeBuffer {
+                        data: &frame.frame_data,
+                    };
+                    let unit = VideoDecodeUnit {
+                        buffers: &[buffer],
+                        timestamp: frame.timestamp,
+                        frame_type: frame.frame_type,
+                        frame_processing_latency: frame.frame_processing_latency,
+                    };
+                    if let Err(err) = transport.send_video_unit(&unit).await {
+                        warn!("Failed to send video decode unit: {err}");
+                    }
                 }
-            })
-        }
+            }
+        });
+
+        result
     }
 
     fn start(&mut self) {}
@@ -56,29 +115,36 @@ impl VideoDecoder for StreamVideoDecoder {
             return DecodeResult::Ok;
         };
 
-        stream.runtime.clone().block_on(async {
-            let mut sender = stream.transport_sender.lock().await;
+        let start = Instant::now();
 
-            if let Some(sender) = sender.as_mut() {
-                let start = Instant::now();
-                let result = match sender.send_video_unit(&unit).await {
-                    Err(err) => {
-                        warn!("Failed to send video decode unit: {err}");
-                        DecodeResult::Ok
-                    }
-                    Ok(value) => value,
-                };
+        // Copy frame data from borrowed C buffers into owned Vec
+        let mut frame_data = Vec::new();
+        for buffer in unit.buffers {
+            frame_data.extend_from_slice(buffer.data);
+        }
 
-                let frame_processing_time = Instant::now() - start;
-                self.stats.analyze(&stream, &unit, frame_processing_time);
+        let owned_frame = OwnedVideoFrame {
+            frame_data,
+            timestamp: unit.timestamp,
+            frame_type: unit.frame_type,
+            frame_processing_latency: unit.frame_processing_latency,
+        };
 
-                result
-            } else {
-                debug!("Dropping video packet because of missing transport");
-
-                DecodeResult::Ok
+        // Non-blocking send — if channel is full, drop the frame.
+        // This is correct for real-time video; the downstream TrackLocalSender
+        // already drops frames when its queue is full.
+        if let Some(sender) = &self.video_frame_sender {
+            if sender.try_send(owned_frame).is_err() {
+                debug!("Dropping video frame — channel full (backpressure)");
             }
-        })
+        } else {
+            debug!("Dropping video packet because channel not initialized");
+        }
+
+        let frame_processing_time = Instant::now() - start;
+        self.stats.analyze(&stream, &unit, frame_processing_time);
+
+        DecodeResult::Ok
     }
 
     fn supported_formats(&self) -> SupportedVideoFormats {

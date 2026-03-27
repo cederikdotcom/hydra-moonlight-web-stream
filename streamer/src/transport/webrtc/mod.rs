@@ -25,7 +25,7 @@ use tokio::{
     runtime::Handle,
     spawn,
     sync::{
-        Mutex,
+        Mutex, RwLock,
         mpsc::{Receiver, Sender, channel},
     },
     time::sleep,
@@ -74,7 +74,7 @@ struct WebRtcInner {
     peer: Arc<RTCPeerConnection>,
     event_sender: Sender<TransportEvent>,
     general_channel: Arc<RTCDataChannel>,
-    stats_channel: Mutex<Option<Arc<RTCDataChannel>>>,
+    stats_channel: RwLock<Option<Arc<RTCDataChannel>>>,
     video: Mutex<WebRtcVideo>,
     audio: Mutex<WebRtcAudio>,
     // Timeout / Terminate
@@ -170,7 +170,7 @@ pub async fn new(
         peer: peer.clone(),
         event_sender,
         general_channel: general_channel.clone(),
-        stats_channel: Mutex::new(None),
+        stats_channel: RwLock::new(None),
         video: Mutex::new(WebRtcVideo::new(
             runtime.clone(),
             Arc::downgrade(&peer),
@@ -545,7 +545,7 @@ impl WebRtcInner {
                 ));
             }
             "stats" => {
-                let mut stats = self.stats_channel.lock().await;
+                let mut stats = self.stats_channel.write().await;
 
                 channel.on_close({
                     let this = Arc::downgrade(&self);
@@ -605,7 +605,7 @@ impl WebRtcInner {
     }
 
     async fn close_stats(&self) {
-        let mut stats = self.stats_channel.lock().await;
+        let mut stats = self.stats_channel.write().await;
 
         *stats = None;
     }
@@ -713,7 +713,7 @@ impl TransportSender for WebRTCTransportSender {
                 _ => {}
             },
             TransportChannelId::STATS => {
-                let stats = self.inner.stats_channel.lock().await;
+                let stats = self.inner.stats_channel.read().await;
                 if let Some(stats) = stats.as_ref() {
                     match stats.send(&bytes).await {
                         Ok(_) => {}

@@ -694,15 +694,14 @@ impl StreamConnection {
 
         let host = &self.info.host;
 
-        let video_decoder = StreamVideoDecoder {
-            stream: Arc::downgrade(self),
-            supported_formats: settings.video_supported_formats,
-            stats: Default::default(),
-        };
+        let video_decoder = StreamVideoDecoder::new(
+            Arc::downgrade(self),
+            settings.video_supported_formats,
+        );
 
-        let audio_decoder = StreamAudioDecoder {
-            stream: Arc::downgrade(self),
-        };
+        let audio_decoder = StreamAudioDecoder::new(
+            Arc::downgrade(self),
+        );
 
         let connection_listener = StreamConnectionListener {
             stream: Arc::downgrade(self),
@@ -946,7 +945,7 @@ impl ConnectionListener for StreamConnectionListener {
             return;
         };
 
-        stream.clone().runtime.block_on(async move {
+        stream.clone().runtime.spawn(async move {
             info!("[HDR] Sending HdrModeUpdate to client");
             stream
                 .try_send_packet(
@@ -959,7 +958,7 @@ impl ConnectionListener for StreamConnectionListener {
                     true,
                 )
                 .await
-        })
+        });
     }
 
     fn controller_rumble(
@@ -973,7 +972,7 @@ impl ConnectionListener for StreamConnectionListener {
             return;
         };
 
-        stream.runtime.clone().block_on(async move {
+        stream.runtime.clone().spawn(async move {
             stream
                 .try_send_packet(
                     OutboundPacket::ControllerRumble {
@@ -999,7 +998,7 @@ impl ConnectionListener for StreamConnectionListener {
             return;
         };
 
-        stream.runtime.clone().block_on(async move {
+        stream.runtime.clone().spawn(async move {
             stream
                 .try_send_packet(
                     OutboundPacket::ControllerTriggerRumble {
@@ -1108,7 +1107,7 @@ impl ConnectionListenerC for StreamConnectionListener {
             StreamServerMessage::ConnectionTerminated { error_code },
         ));
 
-        stream.runtime.clone().block_on(async move {
+        stream.runtime.clone().spawn(async move {
             stream.stop().await;
         });
     }
@@ -1123,7 +1122,7 @@ impl ConnectionListenerC for StreamConnectionListener {
             return;
         };
 
-        stream.clone().runtime.block_on(async move {
+        stream.clone().runtime.spawn(async move {
             stream
                 .try_send_packet(
                     OutboundPacket::General {
@@ -1134,7 +1133,7 @@ impl ConnectionListenerC for StreamConnectionListener {
                     "connection status update",
                     true,
                 )
-                .await
-        })
+                .await;
+        });
     }
 }
