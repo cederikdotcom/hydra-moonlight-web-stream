@@ -1,5 +1,8 @@
 use std::{
-    sync::{Arc, Weak},
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -31,6 +34,8 @@ pub(crate) struct StreamVideoDecoder {
     pub(crate) stats: VideoStats,
     /// Channel sender for non-blocking frame delivery to the async consumer task.
     video_frame_sender: Option<mpsc::Sender<OwnedVideoFrame>>,
+    /// Feedback from consumer task: set to true when transport requests an IDR frame.
+    idr_requested: Arc<AtomicBool>,
 }
 
 impl StreamVideoDecoder {
@@ -40,6 +45,7 @@ impl StreamVideoDecoder {
             supported_formats,
             stats: VideoStats::default(),
             video_frame_sender: None,
+            idr_requested: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -75,6 +81,7 @@ impl VideoDecoder for StreamVideoDecoder {
         self.video_frame_sender = Some(sender);
 
         let consumer_stream = self.stream.clone();
+        let consumer_idr_requested = self.idr_requested.clone();
         stream.runtime.spawn(async move {
             while let Some(frame) = receiver.recv().await {
                 let Some(stream) = consumer_stream.upgrade() else {
@@ -83,11 +90,17 @@ impl VideoDecoder for StreamVideoDecoder {
 
                 let mut transport = stream.transport_sender.lock().await;
                 if let Some(transport) = transport.as_mut() {
-                    if let Err(err) = transport
+                    match transport
                         .send_owned_video_frame(frame.frame_data, frame.timestamp, frame.is_idr)
                         .await
                     {
-                        warn!("Failed to send video frame: {err}");
+                        Ok(DecodeResult::NeedIdr) => {
+                            consumer_idr_requested.store(true, Ordering::Release);
+                        }
+                        Err(err) => {
+                            warn!("Failed to send video frame: {err}");
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -132,6 +145,11 @@ impl VideoDecoder for StreamVideoDecoder {
 
         let frame_processing_time = Instant::now() - start;
         self.stats.analyze(&stream, &unit, frame_processing_time);
+
+        // Check if the consumer task flagged an IDR request from the transport.
+        if self.idr_requested.compare_exchange(true, false, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+            return DecodeResult::NeedIdr;
+        }
 
         DecodeResult::Ok
     }
