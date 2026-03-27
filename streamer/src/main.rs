@@ -77,10 +77,11 @@ mod dynamic_ice_servers;
 mod transport;
 mod video;
 
-// Force 4 worker threads regardless of CPU count. On 2-vCPU machines, the
-// default 2 threads causes ICE keepalive responses to be delayed when video
-// processing saturates both threads, triggering browser disconnects at ~8.5s.
-#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
+// Force 8 worker threads regardless of CPU count. Video/audio consumer tasks
+// and WebRTC codec processing compete with ICE keepalive tasks for thread time.
+// 8 threads ensures the ICE agent always has capacity to respond to STUN consent
+// requests, even when all video/audio consumers are actively sending frames.
+#[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() {
     let default_panic = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
