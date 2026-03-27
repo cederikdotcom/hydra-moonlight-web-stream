@@ -39,7 +39,16 @@ impl AudioDecoder for StreamAudioDecoder {
         let result = stream.runtime.clone().block_on(async move {
             let mut sender = stream.transport_sender.lock().await;
             if let Some(sender) = sender.as_mut() {
-                sender.setup_audio(audio_config, stream_config).await
+                let r = sender.setup_audio(audio_config, stream_config).await;
+                // Renegotiate ONCE after both video and audio tracks are added.
+                // Video setup runs before audio in Moonlight's init sequence,
+                // so both tracks exist now. One offer includes both tracks in a
+                // single SDP, preventing the signaling race from two concurrent
+                // offer/answer exchanges that caused ErrSignalingStateProposedTransitionInvalid.
+                if !sender.renegotiate().await {
+                    warn!("Failed to renegotiate after track setup");
+                }
+                r
             } else {
                 error!("Failed to setup audio because of missing transport!");
                 -1

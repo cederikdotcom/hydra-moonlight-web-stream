@@ -647,6 +647,11 @@ pub trait TransportSender {
     ) -> i32;
     async fn send_audio_sample(&self, data: &[u8]) -> Result<(), TransportError>;
 
+    /// Trigger SDP renegotiation after tracks have been added.
+    /// Called once after both video and audio setup complete.
+    /// Default no-op for transports that don't need renegotiation (WebSocket).
+    async fn renegotiate(&self) -> bool { true }
+
     async fn send(&self, packet: OutboundPacket) -> Result<(), TransportError>;
 
     async fn on_ipc_message(&self, message: ServerIpcMessage) -> Result<(), TransportError>;

@@ -89,11 +89,9 @@ impl WebRtcAudio {
 
         self.config = Some(stream_config);
 
-        // Renegotiate
-        if !inner.send_offer().await {
-            warn!("Failed to renegotiate. Audio was added!");
-        }
-
+        // Do NOT renegotiate here — video track was just added before this.
+        // A single renegotiation happens after both tracks are set up,
+        // preventing the signaling race from concurrent offer/answer exchanges.
         0
     }
 

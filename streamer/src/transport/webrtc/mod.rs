@@ -703,6 +703,10 @@ impl TransportSender for WebRTCTransportSender {
         Ok(())
     }
 
+    async fn renegotiate(&self) -> bool {
+        self.inner.send_offer().await
+    }
+
     async fn send(&self, packet: OutboundPacket) -> Result<(), TransportError> {
         let mut buffer = Vec::new();
 
