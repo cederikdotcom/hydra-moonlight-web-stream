@@ -50,7 +50,7 @@ impl WebRtcAudio {
 impl WebRtcAudio {
     pub async fn setup(
         &mut self,
-        inner: &WebRtcInner,
+        _inner: &WebRtcInner,
         audio_config: AudioConfig,
         stream_config: OpusMultistreamConfig,
     ) -> i32 {
