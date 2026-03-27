@@ -624,6 +624,8 @@ pub trait TransportEvents {
 #[async_trait]
 pub trait TransportSender {
     async fn setup_video(&self, setup: VideoSetup) -> i32;
+    /// Send a video frame from a borrowed VideoDecodeUnit (used by direct callers).
+    #[allow(dead_code)]
     async fn send_video_unit<'a>(
         &'a self,
         unit: &'a VideoDecodeUnit<'a>,

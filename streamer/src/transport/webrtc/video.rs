@@ -220,6 +220,9 @@ impl WebRtcVideo {
         true
     }
 
+    /// Send a video frame from a borrowed VideoDecodeUnit.
+    /// Kept for compatibility with WebSocket transport path.
+    #[allow(dead_code)]
     pub async fn send_decode_unit(&mut self, unit: &VideoDecodeUnit<'_>) -> DecodeResult {
         let timestamp = (unit.timestamp.as_nanos() * 90000 / 1_000_000_000) as u32;
 
