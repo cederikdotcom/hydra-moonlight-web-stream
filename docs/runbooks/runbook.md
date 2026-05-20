@@ -100,6 +100,19 @@ Note: Cargo.toml version and git tag version are different schemes. CI uses Carg
 - Check WireGuard connectivity: `ping <body-wireguard-ip>`
 - Check pairing succeeded in hydraneckwebrtc logs
 
+### Stream diagnostics (latency, audio interruptions)
+
+Open the stream sidebar (arrow button on the screen edge) and click **Diagnostics**. This shows a live overlay in the top-right corner with:
+
+- **Network RTT** — round-trip time to the streamer (Sunshine). Spikes here indicate network jitter, the most common cause of audio interruptions.
+- **Host latency avg** — average time for the host (body) to process a video frame. High values indicate CPU/GPU overload on the body.
+- **Streamer proc avg** — average time for the streamer process to handle a frame.
+- **Browser RTT** — visible only on WebSocket transport.
+- **Video** — codec, resolution, frame rate.
+- **Audio** — active audio pipeline (e.g. `data → AudioElement`).
+
+Diagnostics enables stats collection automatically. The **Stats** button in the same sidebar shows a verbose raw text dump of all WebRTC internals if deeper inspection is needed.
+
 ### Audio quality issues (metallic sound)
 
 The fork uses a custom moonlight-common-rust with high-quality audio support (44100 Hz, hybrid AudioContext + audio element playback). If audio sounds metallic, check that the correct moonlight-common-rust revision is used in Cargo.toml.
