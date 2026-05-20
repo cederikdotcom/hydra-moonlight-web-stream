@@ -36,6 +36,55 @@ function num(value: number | null | undefined, suffix?: string): string | null {
     }
 }
 
+export function renderDiagnosticsPanel(container: HTMLElement, data: StreamStatsData): void {
+    while (container.firstChild) {
+        container.removeChild(container.firstChild)
+    }
+
+    const addRow = (label: string, value: string | null) => {
+        const div = document.createElement("div")
+        div.classList.add("video-diagnostics-row")
+
+        const labelEl = document.createElement("span")
+        labelEl.classList.add("video-diagnostics-label")
+        labelEl.innerText = label
+
+        const valueEl = document.createElement("span")
+        valueEl.classList.add("video-diagnostics-value")
+        if (value == null) {
+            valueEl.classList.add("video-diagnostics-value-missing")
+        }
+        valueEl.innerText = value ?? "--"
+
+        div.appendChild(labelEl)
+        div.appendChild(valueEl)
+        container.appendChild(div)
+    }
+
+    const ms = (v: number | null) => v != null ? `${v.toFixed(1)} ms` : null
+
+    const title = document.createElement("div")
+    title.classList.add("video-diagnostics-title")
+    title.innerText = "Diagnostics"
+    container.appendChild(title)
+
+    addRow("Network RTT", ms(data.streamerRttMs))
+    if (data.browserRtt != null) {
+        addRow("Browser RTT", ms(data.browserRtt))
+    }
+    addRow("Host latency avg", ms(data.avgHostProcessingLatencyMs))
+    addRow("Streamer proc avg", ms(data.avgStreamerProcessingTimeMs))
+
+    const videoParts = [
+        data.videoCodec,
+        (data.videoWidth != null && data.videoHeight != null) ? `${data.videoWidth}×${data.videoHeight}` : null,
+        data.videoFps != null ? `${data.videoFps} fps` : null,
+    ].filter((s): s is string => s != null)
+    addRow("Video", videoParts.length > 0 ? videoParts.join("  ") : null)
+
+    addRow("Audio", data.audioPipeline)
+}
+
 export function streamStatsToText(statsData: StreamStatsData): string {
     let text = `stats:
 video information: ${statsData.videoCodec}, ${statsData.videoWidth}x${statsData.videoHeight}, ${statsData.videoFps} fps

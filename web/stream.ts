@@ -11,7 +11,7 @@ import { SelectComponent } from "./component/input.js";
 import { LogMessageType, StreamCapabilities, StreamKeys } from "./api_bindings.js";
 import { ScreenKeyboard, TextEvent } from "./screen_keyboard.js";
 import { FormModal } from "./component/modal/form.js";
-import { streamStatsToText } from "./stream/stats.js";
+import { renderDiagnosticsPanel, streamStatsToText } from "./stream/stats.js";
 
 async function startApp() {
     const api = await getApi()
@@ -73,6 +73,8 @@ class ViewerApp implements Component {
     private div = document.createElement("div")
 
     private statsDiv = document.createElement("div")
+    private diagnosticsDiv = document.createElement("div")
+    private diagnosticsEnabled = false
     private stream: Stream | null = null
 
     private settings: Settings
@@ -93,19 +95,32 @@ class ViewerApp implements Component {
         this.statsDiv.hidden = true
         this.statsDiv.classList.add("video-stats")
 
+        // Configure diagnostics element
+        this.diagnosticsDiv.hidden = true
+        this.diagnosticsDiv.classList.add("video-diagnostics")
+
         setInterval(() => {
-            // Update stats display every 100ms
+            // Update stats and diagnostics display every 100ms
             const stats = this.getStream()?.getStats()
             if (stats && stats.isEnabled()) {
-                this.statsDiv.hidden = false
+                const data = stats.getCurrentStats()
 
-                const text = streamStatsToText(stats.getCurrentStats())
-                this.statsDiv.innerText = text
+                this.statsDiv.hidden = false
+                this.statsDiv.innerText = streamStatsToText(data)
+
+                if (this.diagnosticsEnabled) {
+                    this.diagnosticsDiv.hidden = false
+                    renderDiagnosticsPanel(this.diagnosticsDiv, data)
+                } else {
+                    this.diagnosticsDiv.hidden = true
+                }
             } else {
                 this.statsDiv.hidden = true
+                this.diagnosticsDiv.hidden = true
             }
         }, 100)
         this.div.appendChild(this.statsDiv)
+        this.div.appendChild(this.diagnosticsDiv)
 
         // Configure stream
         const settings = getLocalStreamSettings() ?? defaultSettings()
@@ -530,6 +545,16 @@ class ViewerApp implements Component {
     getStream(): Stream | null {
         return this.stream
     }
+
+    toggleDiagnostics() {
+        this.diagnosticsEnabled = !this.diagnosticsEnabled
+        if (this.diagnosticsEnabled) {
+            const stats = this.getStream()?.getStats()
+            if (stats && !stats.isEnabled()) {
+                stats.setEnabled(true)
+            }
+        }
+    }
 }
 
 class ConnectionInfoModal implements Modal<void> {
@@ -663,6 +688,7 @@ class ViewerSidebar implements Component, Sidebar {
     private fullscreenButton = document.createElement("button")
 
     private statsButton = document.createElement("button")
+    private diagnosticsButton = document.createElement("button")
     private exitStreamButton = document.createElement("button")
 
     private mouseMode: SelectComponent
@@ -732,6 +758,13 @@ class ViewerSidebar implements Component, Sidebar {
             }
         })
         this.buttonDiv.appendChild(this.statsButton)
+
+        // Diagnostics
+        this.diagnosticsButton.innerText = "Diagnostics"
+        this.diagnosticsButton.addEventListener("click", () => {
+            this.app.toggleDiagnostics()
+        })
+        this.buttonDiv.appendChild(this.diagnosticsButton)
 
         // Close stream
         this.exitStreamButton.innerText = "Exit"
