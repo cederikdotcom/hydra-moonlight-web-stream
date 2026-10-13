@@ -200,3 +200,7 @@ capture, pre-aborted signals, once/reentrant dispatch, manual removal/re-registr
 duplicate registration, abort during dispatch, missing AbortController and working
 native support. All 32 browser tests and strict standalone TypeScript checking pass
 locally. These model older DOM behavior; exact Samsung firmware remains NOT RUN.
+
+Abortable listener change `07fbe61` passed all browser/Rust tests, generated-binding
+TypeScript checking and all four platform builds in [CI 38433852146](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38433852146).
+Release and deployment jobs were skipped. Device gates remain NOT RUN.
