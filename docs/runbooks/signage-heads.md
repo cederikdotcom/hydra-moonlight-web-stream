@@ -196,6 +196,34 @@ Unreal experiences are not interchangeable.
 
 ## Browser and fleet gaps shared by both models
 
+### Touch capture is part of the requested Samsung head
+
+The owner confirmed touch capture as part of #769. The existing browser path
+already captures `touchstart`, `touchmove`, `touchend` and `touchcancel` in
+`web/stream.ts`. `web/stream/input.ts` sends per-contact identifiers and normalized
+coordinates on the touch channel. `streamer/src/transport/mod.rs` decodes it;
+`streamer/src/main.rs` forwards it with `send_touch` to the Moonlight/Sunshine
+connection. Mouse emulation uses the existing mouse channels instead.
+
+For the recovered iframe-based Samsung PoC, capture input in the embedded
+stream page itself. Do not assume events inside an iframe bubble to the outer
+Tizen document. Ensure overlays do not intercept the streaming surface and
+test touch delivery in the actual signage launch mode.
+
+Two modes are required: direct-position mouse emulation for current mouse-bound
+experiences, and native multitouch for experiences that handle touch contacts.
+The app must define pinch/zoom behavior; forwarding two contacts does not
+automatically make a mouse-only experience understand a pinch.
+
+**Source defect found, not fixed by this preparation:** native `onTouchEnd()`
+sends event code 2, but the Rust decoder maps code 2 to
+`TouchEventType::Cancel`. `onTouchCancel()` also calls the end handler. Separate
+normal release and cancellation across the browser/relay protocol, with tests
+for tap, drag, multiple contacts, cancelled gestures and release outside the
+video rectangle. Also verify that mouse-emulation cancellation does not produce
+a click. These are prerequisites for native-touch readiness, even before the
+Samsung firmware-specific validation.
+
 `web/stream/input.ts` defaults to `mouseRelative`; `pointAndDrag` and native
 `touch` modes already exist. For public touch displays, select and persist the
 appropriate mode in a signage profile rather than altering every browser user's
