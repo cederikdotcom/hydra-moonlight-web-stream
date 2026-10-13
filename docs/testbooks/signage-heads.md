@@ -3,6 +3,10 @@
 Status: **NOT RUN on Samsung QM43B-T, QM55B-T or iiyama T4362AS-B1**.
 Desktop browser tests and vendor specifications cannot change this status.
 Background and implementation gaps: [signage runbook](../runbooks/signage-heads.md).
+Earlier Samsung work is recorded in issues 26 and 141. Issue 26's implementation
+report still lists hardware/emulator testing as future work. Recover and inspect
+that client first; its reported Tizen 7.0+ package target is above the requested
+Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
 
 ## Preparation checks recorded on 2026-10-13
 

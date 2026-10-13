@@ -7,6 +7,44 @@ The delivered code is a local browser capability probe, not a signage client.
 The implementation backlog below is still open. Keep #769 open until the
 model-specific acceptance results exist.
 
+**Correction after reviewing earlier issues:** ExperienceNet already recorded
+Samsung client work under `hydraheadsamsungtv`. The initial inventory missed
+that tracker history. Recover and assess this work before creating a new
+Samsung client. The absence of an accessible repository is not evidence that
+the earlier implementation never existed.
+
+## Existing Samsung work: issues 26 and 141
+
+- [Issue 26](https://issues.experiencenet.com/admin/issues/26), marked done,
+  contains a 2026-03-15 implementation report for a Phase 1 WebRTC proof of
+  concept named `hydraheadsamsungtv`: `config.xml`, fullscreen iframe in
+  `index.html`, `js/main.js` creating a neck-controller session and loading its
+  stream URL, connection-status overlay, visibility handling and
+  `TECHNICAL_NOTES.md`. Its completion report explicitly leaves deployment to
+  an emulator/physical Samsung TV and streaming validation as next steps.
+  Its declared target was Tizen 7.0+, so it cannot be assumed installable on
+  the requested Tizen 6.5 QMB-T panels. Recover the code to inspect actual
+  APIs, credentials, frame policies and signaling before adapting the target.
+- [Issue 141](https://issues.experiencenet.com/admin/issues/141), still open,
+  proposes a later native GameStream approach: fork
+  `brightcraft/moonlight-tizen`, add a Hydra JS/WASM bridge, cluster-mediated
+  pairing and remote `.wgt` deployment. It names QE43Q7FA/QE55Q7FA consumer TVs
+  as its intended bench, not the QM43B-T/QM55B-T signage panels. This is a
+  plan, not a retrieved implementation or validation report.
+- Neither record establishes a fork of `tsoas/moonlight-webrtc-tizen`. The
+  March PoC instead reused Hydra's own browser/relay infrastructure; the May
+  proposal names Brightcraft explicitly.
+
+Source recovery status on 2026-10-13: direct GitHub lookups for
+`cederikdotcom/hydraheadsamsung` and `cederikdotcom/hydraheadsamsungtv` did not
+resolve under the current credentials. A paginated accessible-repository
+inventory and the ExperienceNet organization listing did not return them.
+No matching checkout or the issue-141 plan file
+`~/.claude/plans/shimmering-rolling-avalanche.md` was found in the searched
+workspace locations. The source may be on the original workstation, under
+another name/account, or inaccessible; it has not been inspected. Do not
+equate the tracker status `done` with hardware validation.
+
 ## Direction
 
 Prefer the displays' built-in computers. Reuse the browser relay for the Samsung
@@ -45,7 +83,8 @@ These are inspected local revisions, not claims that every deployed machine is
 running them. `hydra-moonlight-web-stream` and `hydraheadquest` matched their
 origin/master after fetch. The owner's GitHub repository inventory was also
 searched; no dedicated Samsung/Tizen/iiyama head repository was found in the
-returned inventory.
+returned inventory. This search missed the recorded `hydraheadsamsungtv` work
+described above; its source remains unlocated.
 
 | Repository / revision | Reuse and limitations |
 |---|---|
@@ -193,6 +232,10 @@ and collecting device evidence.
 
 Remaining work, in order:
 
+0. Recover `hydraheadsamsungtv` from issue 26 and reconcile it with the native
+   proposal in issue 141. Reuse its applicable code and document the chosen
+   transport. Inspect the Tizen 7.0 target versus these 6.5 panels before
+   producing a replacement launcher.
 1. Collect one exact unit's firmware/ABI/browser report for each model. Trial
    the existing browser relay and Android flat `Game` path with conservative
    settings. Record failures instead of changing production fleet defaults.
