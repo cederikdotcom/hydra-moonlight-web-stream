@@ -30,8 +30,10 @@ pub enum Profile {
 }
 
 impl ManagedSignagePolicy {
-    pub fn allows_address(&self, address: &str) -> bool {
-        !self.experience.is_empty() && address.parse::<IpAddr>().ok() == Some(self.body_ip)
+    pub fn allows_endpoint(&self, address: &str, http_port: u16) -> bool {
+        !self.experience.is_empty()
+            && http_port == 47989
+            && address.parse::<IpAddr>().ok() == Some(self.body_ip)
     }
 
     pub fn allows_app<'a>(&self, app_id: u32, apps: impl Iterator<Item = (u32, &'a str)>) -> bool {
@@ -116,9 +118,10 @@ mod tests {
     #[test]
     fn exact_body_and_unique_app_required() {
         let p = policy();
-        assert!(p.allows_address("10.10.100.1"));
-        assert!(!p.allows_address("10.10.100.2"));
-        assert!(!p.allows_address("body.example"));
+        assert!(p.allows_endpoint("10.10.100.1", 47989));
+        assert!(!p.allows_endpoint("10.10.100.2", 47989));
+        assert!(!p.allows_endpoint("body.example", 47989));
+        assert!(!p.allows_endpoint("10.10.100.1", 1234));
         assert!(p.allows_app(7, [(1, "Desktop"), (7, "gallery")].into_iter()));
         assert!(!p.allows_app(1, [(1, "Desktop"), (7, "gallery")].into_iter()));
         assert!(!p.allows_app(7, [(7, "Gallery")].into_iter()));

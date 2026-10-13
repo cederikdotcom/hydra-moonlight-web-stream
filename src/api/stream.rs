@@ -159,7 +159,7 @@ pub async fn start_host(
         };
 
         if let Some(policy) = &web_app.config().managed_signage {
-            if !policy.allows_address(&address) {
+            if !policy.allows_endpoint(&address, http_port) {
                 let _ = session.close(None).await;
                 return;
             }
