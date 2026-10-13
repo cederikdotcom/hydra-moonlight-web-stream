@@ -38,7 +38,7 @@ Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
   cancellation without click, drag release, delayed-tap cancellation, held and
   simultaneous keys, focus recovery, closed-channel cleanup, listener removal,
   mouse buttons/wheel/relative movement and sparse gamepad slots.
-- ADDED, execution pending: Rust relay decoder tests for all four event codes,
+- PASS in CI: Rust relay decoder tests for all four event codes,
   legacy cancel compatibility, packet fields, truncated and unknown messages.
 - BLOCKED locally: full TypeScript checking needs generated Rust bindings;
   `tsc --noEmit` reports missing `web/api_bindings.js` plus downstream errors.
@@ -48,7 +48,11 @@ Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
   browser tests and reproduced the same `printf-compat`/`VaList::arg` failure.
   Follow-up removes CI's moving-nightly override so it honors the existing
   `nightly-2026-02-13` repository pin, and checks TypeScript after bindings are
-  generated. Results from that rerun remain pending.
+  generated. Rerun 38409021061 at commit 7fb21b3 passed the complete Rust test
+  suite, TypeScript build and all four platform builds (Windows x86_64 GNU,
+  Linux x86_64 GNU, Linux aarch64 GNU and musl). Versioned CI artifacts are
+  available on that run; these are relay/browser artifacts, not a signed WGT.
+  Release publication and Docker publication were skipped. No deployment ran.
 - NOT RUN: physical peripherals, real relay/body input delivery, Tizen runtime,
   WGT signing/install/update and every model/firmware gate below.
 
