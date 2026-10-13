@@ -406,3 +406,10 @@ is running; an earlier app-ID check cannot make that safe. A distinct
 instead of ignoring a new configuration field. Busy-host refusal still needs
 integration testing with the pending worker/provider ownership path; managed
 reconnect cannot resume an existing app until ownership is established.
+
+Input cleanup probes abortable event listener behavior independently of the presence
+of AbortController. Engines that ignore or reject the listener `signal` option
+receive a capture-aware cleanup shim; working native support is preserved. This
+prevents old input listeners surviving a stream reconnect on those engines. The
+shim also preserves once behavior and does not mutate caller options. This is
+compatibility preparation, not a Tizen firmware support claim.

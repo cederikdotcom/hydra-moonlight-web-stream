@@ -193,3 +193,10 @@ the consumer's pinned API. Its two new launch-only tests pass, and same-run
 baseline comparison confirms the same four pre-existing pairing/request test
 failures with no new failures. [Run 38422401077](https://github.com/cederikdotcom/moonlight-common-rust/actions/runs/38422401077) passed at `cf32f0c`. This is
 regression evidence; the full dependency suite is not all green.
+
+Abortable event listener compatibility now has ten independent DOM fixture tests:
+native AbortController with unsupported listener signals, frozen/inherited options,
+capture, pre-aborted signals, once/reentrant dispatch, manual removal/re-registration,
+duplicate registration, abort during dispatch, missing AbortController and working
+native support. All 32 browser tests and strict standalone TypeScript checking pass
+locally. These model older DOM behavior; exact Samsung firmware remains NOT RUN.
