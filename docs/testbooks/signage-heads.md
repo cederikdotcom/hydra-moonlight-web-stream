@@ -31,8 +31,10 @@ Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
 - PASS locally: `node --test tests/*.test.cjs`: 22 tests, comprising the existing
   eight probe checks and fourteen production browser-input tests. The latest
   three tests cover immediate absolute mouse dragging/release, ignored secondary
-  contacts/cancel and explicit per-session mode selection. CI for that follow-up
-  is pending; the earlier 19-test input patch passed full CI. The input suite
+  contacts/cancel and explicit per-session mode selection. Full CI run
+  [38411624488](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38411624488)
+  passed at `5429233`, including Rust tests, TypeScript generated-binding build
+  and all four platform artifact builds. The input suite
   transpiles the real TypeScript modules with the pinned TypeScript dependency;
   browser APIs and generated enum bindings are fixtures. Packet bytes are
   decoded independently of the production serializer.
