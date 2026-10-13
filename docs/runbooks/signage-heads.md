@@ -306,6 +306,16 @@ letterboxed/portrait rectangles, native multitouch, taps, cancellation, held
 keys, mouse buttons/wheel/relative movement, controller slot reuse and reconnect.
 These tests do not prove physical input delivery, kiosk behavior or Tizen decode.
 
+The stream document accepts `signageInput=absoluteMouse` or `signageInput=touch`
+on its session URL. The session mediator must choose this from the assigned
+experience's profile; unknown/absent values preserve ordinary browser defaults.
+`absoluteMouse` presses immediately at the primary contact, forwards direct
+positions on the ordered reliable mouse channel and releases at the final
+clamped position. Secondary fingers are ignored, with no delayed clicks,
+trackpad acceleration or pinch interpretation. Cancellation releases only.
+This behavior is distinct from the existing delayed `pointAndDrag` gestures.
+The URL parameter carries no credentials and creates no session authority.
+
 `web/stream/input.ts` defaults to `mouseRelative`; `pointAndDrag` and native
 `touch` modes already exist. For public touch displays, select and persist the
 appropriate mode in a signage profile rather than altering every browser user's

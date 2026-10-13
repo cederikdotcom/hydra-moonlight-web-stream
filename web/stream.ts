@@ -5,7 +5,7 @@ import { showErrorPopup } from "./component/error.js";
 import { InfoEvent, Stream } from "./stream/index.js"
 import { getModalBackground, Modal, showMessage, showModal } from "./component/modal/index.js";
 import { getSidebarRoot, setSidebar, setSidebarExtended, setSidebarStyle, Sidebar } from "./component/sidebar/index.js";
-import { defaultStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
+import { signageStreamInputConfig, MouseMode, ScreenKeyboardSetVisibleEvent, StreamInputConfig } from "./stream/input.js";
 import { defaultSettings, getLocalStreamSettings, Settings } from "./component/settings_menu.js";
 import { SelectComponent } from "./component/input.js";
 import { LogMessageType, StreamCapabilities, StreamKeys } from "./api_bindings.js";
@@ -79,7 +79,7 @@ class ViewerApp implements Component {
 
     private settings: Settings
 
-    private inputConfig: StreamInputConfig = defaultStreamInputConfig()
+    private inputConfig: StreamInputConfig = signageStreamInputConfig(new URLSearchParams(location.search).get("signageInput"))
     private previousMouseMode: MouseMode
     private toggleFullscreenWithKeybind: boolean
     private hasShownFullscreenEscapeWarning = false
@@ -184,6 +184,7 @@ class ViewerApp implements Component {
         })
 
         this.stream = new Stream(this.api, hostId, appId, settings, browserSize)
+        this.stream.getInput().setConfig(this.inputConfig)
 
         // Add app info listener
         this.stream.addInfoListener(this.onInfo.bind(this))
@@ -803,6 +804,7 @@ class ViewerSidebar implements Component, Sidebar {
         // Select Touch Mode
         this.touchMode = new SelectComponent("touchMode", [
             { value: "touch", name: "Touch" },
+            { value: "absoluteMouse", name: "Absolute Mouse" },
             { value: "mouseRelative", name: "Relative" },
             { value: "pointAndDrag", name: "Point and Drag" }
         ], {

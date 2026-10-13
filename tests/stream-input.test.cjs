@@ -41,7 +41,7 @@ function fixture(mode = 'touch', pads = []) {
         run(name => load(path.resolve(path.dirname(file), name)), module, module.exports);
         return module.exports;
     }
-    const { StreamInput, defaultStreamInputConfig } = load(path.join(root, 'web/stream/input.ts'));
+    const { StreamInput, defaultStreamInputConfig, signageStreamInputConfig } = load(path.join(root, 'web/stream/input.ts'));
     const input = new StreamInput({ ...defaultStreamInputConfig(), touchMode: mode });
     const channels = {};
     const transport = { getChannel: id => channels[id] ??= {
@@ -52,7 +52,7 @@ function fixture(mode = 'touch', pads = []) {
     } };
     input.setTransport(transport);
     input.onStreamStart({ touch: true }, [1920, 1080]);
-    return { input, packets, bindings, pads, transport, listeners,
+    return { input, packets, bindings, pads, transport, listeners, signageStreamInputConfig,
         time: value => now = value,
         fail: value => fail = value,
         flush: () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(fn => fn()); },
@@ -200,4 +200,38 @@ test('sparse browser gamepad IDs use relay slots and surviving controllers still
     assert.deepEqual(f.packets.CONTROLLERS.slice(-2).map(p => [...p]), [[1, 0], [1, 1]]);
     f.input.setFocused(true); assert.equal(f.packets.CONTROLLERS.at(-1)[0], 0);
     f.input.onStreamStop();
+});
+
+
+test('absolute touchscreen mouse presses immediately, tracks absolute position and releases outside', () => {
+    const f = fixture('absoluteMouse');
+    f.input.onTouchStart(event(touch(1)), rect);
+    assert.deepEqual(f.packets.MOUSE_RELIABLE.map(p => p[0]), [1, 2]);
+    assert.deepEqual([...f.packets.MOUSE_RELIABLE[1]], [2, 1, 1]);
+    f.input.onTouchMove(event(touch(1, 700, 275)), rect);
+    const move = f.packets.MOUSE_RELIABLE.at(-1);
+    assert.equal(move.readInt16BE(1), 3072); assert.equal(move.readInt16BE(3), 2048);
+    f.input.onTouchEnd(event(touch(1, 1200, -100)), rect);
+    const endPosition = f.packets.MOUSE_RELIABLE.at(-2);
+    assert.equal(endPosition.readInt16BE(1), 4096); assert.equal(endPosition.readInt16BE(3), 0);
+    assert.deepEqual([...f.packets.MOUSE_RELIABLE.at(-1)], [2, 0, 1]);
+    const count = f.packets.MOUSE_RELIABLE.length; f.flush();
+    assert.equal(f.packets.MOUSE_RELIABLE.length, count);
+});
+
+test('absolute mouse ignores secondary fingers and cancels without a synthetic click', () => {
+    const f = fixture('absoluteMouse');
+    f.input.onTouchStart(event(touch(1), touch(2)), rect);
+    f.input.onTouchMove(event(touch(2, 800)), rect);
+    f.input.onTouchEnd(event(touch(2, 800)), rect);
+    assert.equal(f.packets.MOUSE_RELIABLE.length, 2);
+    f.input.onTouchCancel(event(touch(1)), rect); f.flush();
+    assert.deepEqual(f.packets.MOUSE_RELIABLE.filter(p => p[0] === 2).map(p => [...p]), [[2, 1, 1], [2, 0, 1]]);
+});
+
+test('session input selection is explicit and does not change ordinary browser defaults', () => {
+    const { signageStreamInputConfig } = fixture();
+    assert.equal(signageStreamInputConfig('absoluteMouse').touchMode, 'absoluteMouse');
+    assert.equal(signageStreamInputConfig('touch').touchMode, 'touch');
+    for (const mode of [null, '', 'untrusted', 'relative']) assert.equal(signageStreamInputConfig(mode).touchMode, 'mouseRelative');
 });

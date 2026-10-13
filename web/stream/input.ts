@@ -43,7 +43,7 @@ export type MouseMode = "relative" | "follow" | "pointAndDrag"
 export type StreamInputConfig = {
     mouseMode: MouseMode
     mouseScrollMode: MouseScrollMode
-    touchMode: "touch" | "mouseRelative" | "pointAndDrag"
+    touchMode: "touch" | "mouseRelative" | "pointAndDrag" | "absoluteMouse"
     controllerConfig: ControllerConfig
 }
 
@@ -58,6 +58,14 @@ export function defaultStreamInputConfig(): StreamInputConfig {
             sendIntervalOverride: null
         }
     }
+}
+
+// The mediator supplies this per-session choice on the actual stream URL.
+// Other browser sessions retain their existing defaults.
+export function signageStreamInputConfig(mode: string | null): StreamInputConfig {
+    const config = defaultStreamInputConfig()
+    if (mode === "absoluteMouse" || mode === "touch") config.touchMode = mode
+    return config
 }
 
 export type PredictedTouchAction = "default" | "drag" | "scroll" | "screenKeyboard"
@@ -497,7 +505,15 @@ export class StreamInput {
             if (this.calcNormalizedPosition(touch.clientX, touch.clientY, rect)) this.updateTouchTracker(touch)
         }
 
-        if (this.config.touchMode == "touch") {
+        if (this.config.touchMode == "absoluteMouse") {
+            for (const touch of event.changedTouches) {
+                if (this.primaryTouch == null && this.touchTracker.has(touch.identifier)) {
+                    this.primaryTouch = touch.identifier
+                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true, StreamMouseButton.LEFT)
+                    this.touchTracker.get(touch.identifier)!.mouseClicked = StreamMouseButton.LEFT
+                }
+            }
+        } else if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
                 this.sendTouch(0, touch, rect)
             }
@@ -575,7 +591,11 @@ export class StreamInput {
 
     onTouchMove(event: TouchEvent, rect: DOMRect) {
         if (!this.connected || !this.focused) return
-        if (this.config.touchMode == "touch") {
+        if (this.config.touchMode == "absoluteMouse") {
+            for (const touch of event.changedTouches) {
+                if (touch.identifier == this.primaryTouch) this.moveAbsoluteTouch(touch, rect)
+            }
+        } else if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
                 this.sendTouch(1, touch, rect)
             }
@@ -653,7 +673,15 @@ export class StreamInput {
     }
 
     onTouchEnd(event: TouchEvent, rect: DOMRect) {
-        if (this.config.touchMode == "touch") {
+        if (this.config.touchMode == "absoluteMouse") {
+            for (const touch of event.changedTouches) {
+                if (touch.identifier == this.primaryTouch) {
+                    this.moveAbsoluteTouch(touch, rect)
+                    this.sendMouseButton(false, StreamMouseButton.LEFT)
+                    this.primaryTouch = null
+                }
+            }
+        } else if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
                 this.sendTouch(3, touch, rect)
             }
@@ -746,6 +774,15 @@ export class StreamInput {
                 this.touchMouseAction = "default"
             }
         }
+    }
+
+    private moveAbsoluteTouch(touch: Touch, rect: DOMRect) {
+        if (rect.width <= 0 || rect.height <= 0 || !Number.isFinite(touch.clientX) || !Number.isFinite(touch.clientY)) return
+        const x = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+        const y = Math.max(0, Math.min(1, (touch.clientY - rect.top) / rect.height))
+        // Same ordered reliable channel as button transitions, including the
+        // final position before release. No trackpad acceleration/delay.
+        this.sendMousePosition(x * 4096, y * 4096, 4096, 4096, true)
     }
 
     private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {
