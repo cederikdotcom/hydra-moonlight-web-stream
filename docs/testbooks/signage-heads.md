@@ -44,7 +44,11 @@ Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
   `tsc --noEmit` reports missing `web/api_bindings.js` plus downstream errors.
   No full local Rust build attempted given disk constraints. Existing CI is
   the intended full build check; its earlier `printf-compat` failure remains
-  separate from these passing browser tests.
+  separate from these passing browser tests. CI run 38408489812 passed all 19
+  browser tests and reproduced the same `printf-compat`/`VaList::arg` failure.
+  Follow-up removes CI's moving-nightly override so it honors the existing
+  `nightly-2026-02-13` repository pin, and checks TypeScript after bindings are
+  generated. Results from that rerun remain pending.
 - NOT RUN: physical peripherals, real relay/body input delivery, Tizen runtime,
   WGT signing/install/update and every model/firmware gate below.
 
