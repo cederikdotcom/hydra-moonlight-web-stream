@@ -1,5 +1,9 @@
 # moonlight-web-stream Runbook
 
+Touch signage preparation for ExperienceNet issue 769: [Samsung QM43B-T,
+QM55B-T and iiyama T4362AS-B1](signage-heads.md). Device compatibility remains
+unverified; the linked runbook includes repository findings and acceptance gates.
+
 ## Overview
 
 moonlight-web-stream is a Rust-based streaming client + web server that acts as a Moonlight client connecting to Sunshine, encapsulates the stream in WebRTC or WebSocket transport, and serves a browser UI for WebRTC peer negotiation. This is our fork of MrCreativ3001/moonlight-web-stream.

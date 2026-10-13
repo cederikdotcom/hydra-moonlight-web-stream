@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ExperienceNet display readiness</title>
+    <style>
+        body { font: 20px sans-serif; margin: 24px auto; padding: 0 20px; max-width: 1000px; color: #202030; background: #fff; }
+        button { font: inherit; padding: 14px; margin: 4px; }
+        #touch-pad { border: 3px solid #6545a0; height: 240px; padding: 12px; touch-action: none; user-select: none; }
+        textarea { width: 100%; height: 400px; box-sizing: border-box; font: 14px monospace; }
+        #status { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>ExperienceNet display readiness</h1>
+    <p>Issue 769: Samsung QM43B-T, QM55B-T and iiyama T4362AS-B1.</p>
+    <p>This checks local browser capabilities only. It does not start a stream or certify this display.</p>
+    <p id="status" role="status">Waiting for JavaScript. If this stays visible, record the browser and firmware versions.</p>
+    <button id="run" type="button">Run again</button>
+    <h2>Touch check</h2>
+    <p>Tap the corners, drag, then use two fingers. The report records the last 30 local events.</p>
+    <div id="touch-pad" aria-label="Touch test area">Touch here</div>
+    <p id="events" aria-live="polite">No input recorded.</p>
+    <h2>Report</h2>
+    <p>Copy this report and record the exact model, firmware and launch method alongside it. Nothing is uploaded.</p>
+    <button id="select-report" type="button">Select report</button>
+    <textarea id="report" readonly aria-label="Capability report"></textarea>
+    <noscript>JavaScript is disabled. The streaming client needs JavaScript.</noscript>
+    <script src="signage-probe.js"></script>
+    <script>SignageProbe.mount(window);</script>
+</body>
+</html>

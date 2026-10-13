@@ -3,6 +3,11 @@
 An unofficial [Moonlight Client](https://moonlight-stream.org/) allowing you to stream your pc to the Web.
 It hosts a Web Server which will forward [Sunshine](https://docs.lizardbyte.dev/projects/sunshine/latest/) traffic to a Browser using the [WebRTC Api](https://webrtc.org/).
 
+ExperienceNet touch signage work (#769): [repository assessment and implementation
+plan](docs/runbooks/signage-heads.md), [device acceptance testbook](docs/testbooks/signage-heads.md),
+and [browser capability probe](web/signage-probe.html). Samsung QM43B-T, QM55B-T
+and iiyama T4362AS-B1 remain unverified on hardware.
+
 ![An image displaying: PC with sunshine and moonlight web installed, a browser making requests to it](/readme/structure.png)
 
 ## Overview

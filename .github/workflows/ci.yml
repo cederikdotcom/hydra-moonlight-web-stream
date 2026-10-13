@@ -25,6 +25,14 @@ jobs:
         with:
           toolchain: nightly
       - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Test standalone browser diagnostics
+        run: |
+          node --check web/signage-probe.js
+          npm test
   
       - name: Test
         run: cargo test --workspace --locked
