@@ -180,10 +180,16 @@ Managed signage policy tests cover exact body/app admission, missing/duplicate
 app rejection, landscape/portrait bounds, removal of HDR/wide-codec/4K/high-rate
 client settings, unsupported codec/transport rejection and one-time ordered
 transport/start signaling. These are server policy tests, not a complete neck
-adapter or physical media test. The new Rust changes await full branch CI.
+adapter or physical media test.
 
 Policy commit `164628a` passed all policy/browser/Rust tests, TypeScript checking
 and four platform builds in run 38417702105. Follow-up launch-only integration
 pins moonlight-common revision `77390b6` and uses a distinct managed IPC envelope;
-its full CI is pending. The dependency's initial standalone test job encountered
-missing GLib before compiling the patch; its runner setup is being corrected.
+full consumer CI passed at `ba7b38a` in [run 38421357390](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38421357390), including
+Rust/browser tests, TypeScript and all four Linux/Windows platform builds.
+
+The dependency maintenance PR targets `maintenance/signage-a04b3085`, preserving
+the consumer's pinned API. Its two new launch-only tests pass, and same-run
+baseline comparison confirms the same four pre-existing pairing/request test
+failures with no new failures. [Run 38422401077](https://github.com/cederikdotcom/moonlight-common-rust/actions/runs/38422401077) passed at `cf32f0c`. This is
+regression evidence; the full dependency suite is not all green.
