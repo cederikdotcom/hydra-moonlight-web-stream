@@ -358,31 +358,36 @@ pub async fn start_host(
         });
 
         // Send init into ipc
-        ipc_sender
-            .send(ServerIpcMessage::Init {
-                config: StreamerConfig {
-                    webrtc: web_app.config().webrtc.clone(),
-                    log_level: web_app.config().log.level_filter,
-                },
-                host_address: address,
-                host_http_port: http_port,
-                client_unique_id: Some(client_unique_id),
-                client_private_key: pair_info.client_private_key,
-                client_certificate: pair_info.client_certificate,
-                server_certificate: pair_info.server_certificate,
-                app_id: app_id.0,
-                video_frame_queue_size: if web_app.config().managed_signage.is_some() {
-                    3
-                } else {
-                    video_frame_queue_size
-                },
-                audio_sample_queue_size: if web_app.config().managed_signage.is_some() {
-                    20
-                } else {
-                    audio_sample_queue_size
-                },
-            })
-            .await;
+        let init = ServerIpcMessage::Init {
+            config: StreamerConfig {
+                webrtc: web_app.config().webrtc.clone(),
+                log_level: web_app.config().log.level_filter,
+                managed_signage: false,
+            },
+            host_address: address,
+            host_http_port: http_port,
+            client_unique_id: Some(client_unique_id),
+            client_private_key: pair_info.client_private_key,
+            client_certificate: pair_info.client_certificate,
+            server_certificate: pair_info.server_certificate,
+            app_id: app_id.0,
+            video_frame_queue_size: if web_app.config().managed_signage.is_some() {
+                3
+            } else {
+                video_frame_queue_size
+            },
+            audio_sample_queue_size: if web_app.config().managed_signage.is_some() {
+                20
+            } else {
+                audio_sample_queue_size
+            },
+        };
+        let init = if web_app.config().managed_signage.is_some() {
+            ServerIpcMessage::InitManaged(Box::new(init))
+        } else {
+            init
+        };
+        ipc_sender.send(init).await;
 
         // Redirect ws message into ipc
         let mut managed_state = common::managed_signage::ManagedSignalingState::default();
@@ -461,7 +466,7 @@ pub async fn managed_signage_policy(web_app: Data<App>, _user: AuthenticatedUser
     match &web_app.config().managed_signage {
         Some(policy) => HttpResponse::Ok()
             .insert_header(("Cache-Control", "no-store"))
-            .json(policy),
+            .json(serde_json::json!({"policy": policy, "launch_only": true})),
         None => HttpResponse::NotFound().finish(),
     }
 }

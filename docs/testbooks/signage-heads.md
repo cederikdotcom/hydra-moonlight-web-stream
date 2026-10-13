@@ -181,3 +181,9 @@ app rejection, landscape/portrait bounds, removal of HDR/wide-codec/4K/high-rate
 client settings, unsupported codec/transport rejection and one-time ordered
 transport/start signaling. These are server policy tests, not a complete neck
 adapter or physical media test. The new Rust changes await full branch CI.
+
+Policy commit `164628a` passed all policy/browser/Rust tests, TypeScript checking
+and four platform builds in run 38417702105. Follow-up launch-only integration
+pins moonlight-common revision `77390b6` and uses a distinct managed IPC envelope;
+its full CI is pending. The dependency's initial standalone test job encountered
+missing GLib before compiling the patch; its runner setup is being corrected.

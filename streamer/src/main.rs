@@ -116,7 +116,19 @@ async fn main() {
         video_frame_queue_size,
         audio_sample_queue_size,
     ) = loop {
-        match ipc_receiver.recv().await {
+        let message = match ipc_receiver.recv().await {
+            Some(ServerIpcMessage::InitManaged(init)) => {
+                let mut init = *init;
+                let ServerIpcMessage::Init { config, .. } = &mut init else {
+                    return;
+                };
+                config.managed_signage = true;
+                Some(init)
+            }
+            None => return,
+            message => message,
+        };
+        match message {
             Some(ServerIpcMessage::Init {
                 config,
                 host_address,
@@ -695,14 +707,10 @@ impl StreamConnection {
 
         let host = &self.info.host;
 
-        let video_decoder = StreamVideoDecoder::new(
-            Arc::downgrade(self),
-            settings.video_supported_formats,
-        );
+        let video_decoder =
+            StreamVideoDecoder::new(Arc::downgrade(self), settings.video_supported_formats);
 
-        let audio_decoder = StreamAudioDecoder::new(
-            Arc::downgrade(self),
-        );
+        let audio_decoder = StreamAudioDecoder::new(Arc::downgrade(self));
 
         let connection_listener = StreamConnectionListener {
             stream: Arc::downgrade(self),
@@ -763,8 +771,8 @@ impl StreamConnection {
         let aes_key = AesKey::new_random(&OpenSSLCryptoBackend)?;
         let aes_iv = AesIv::new_random(&OpenSSLCryptoBackend)?;
 
-        let stream_config = match host
-            .start_stream(
+        let start_result = if self.config.managed_signage {
+            host.launch_stream(
                 self.info.app_id,
                 &settings,
                 aes_key,
@@ -772,7 +780,17 @@ impl StreamConnection {
                 self.moonlight.launch_query_parameters(),
             )
             .await
-        {
+        } else {
+            host.start_stream(
+                self.info.app_id,
+                &settings,
+                aes_key,
+                aes_iv,
+                self.moonlight.launch_query_parameters(),
+            )
+            .await
+        };
+        let stream_config = match start_result {
             Ok(value) => value,
             Err(err) => {
                 warn!("[Stream]: failed to start moonlight stream: {err}");

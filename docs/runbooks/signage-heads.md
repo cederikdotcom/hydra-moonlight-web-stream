@@ -397,3 +397,12 @@ builds silently ignore unknown config keys, so a successful process launch alone
 is insufficient. The pending worker adapter must also restrict externally
 proxied host/pair/admin endpoints and enforce process leases/cleanup. This policy
 is not a substitute for those controls or Samsung decoder validation.
+
+The managed capability response is now `{ "policy": {...}, "launch_only": true }`.
+Managed streamers use the library's `launch_stream` path and never automatically
+resume a running app. The legacy library `start_stream` resumes whenever any app
+is running; an earlier app-ID check cannot make that safe. A distinct
+`InitManaged` IPC envelope makes older streamers reject the managed startup
+instead of ignoring a new configuration field. Busy-host refusal still needs
+integration testing with the pending worker/provider ownership path; managed
+reconnect cannot resume an existing app until ownership is established.
