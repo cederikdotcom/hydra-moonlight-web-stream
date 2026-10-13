@@ -374,3 +374,26 @@ Remaining work, in order:
 
 No release, production deployment, enrollment, body allocation or device test
 was performed as part of this preparation.
+
+### Managed relay enforcement (#770, draft)
+
+An isolated relay process may set `managed_signage` in its server config:
+
+```json
+{"body_ip":"10.10.100.1","experience":"gallery","orientation":"landscape","profile":"tizen65-h264-sdr-720p30-v1"}
+```
+
+This binds signaling to the exact body IP and uniquely named positive app ID,
+refuses the global host-cancel API, and admits one managed connection until its
+streamer child has terminated. Repeated initialization/transport/start requests
+and WebSocket-media fallback are rejected. The server fixes stream requests to
+ordinary H.264, SDR Rec709, 1280x720 (720x1280 portrait), 30fps, 5Mbps and 1200-byte
+packets; frame/audio queues are bounded. Unsupported H.264 clients fail closed.
+The ordinary relay path is unchanged when the policy is absent.
+
+Before handing out a managed URL, the neck worker must fetch the authenticated
+local `GET /api/managed-signage` endpoint and verify the exact policy. Older relay
+builds silently ignore unknown config keys, so a successful process launch alone
+is insufficient. The pending worker adapter must also restrict externally
+proxied host/pair/admin endpoints and enforce process leases/cleanup. This policy
+is not a substitute for those controls or Samsung decoder validation.

@@ -29,6 +29,8 @@ pub struct Config {
     pub log: LogConfig,
     #[serde(default)]
     pub default_settings: Option<Value>,
+    #[serde(default)]
+    pub managed_signage: Option<crate::managed_signage::ManagedSignagePolicy>,
 }
 
 impl Default for Config {
@@ -41,6 +43,7 @@ impl Default for Config {
             webrtc: Default::default(),
             log: Default::default(),
             default_settings: Default::default(),
+            managed_signage: None,
         }
     }
 }

@@ -175,3 +175,9 @@ Support decision: experimental / accepted for these settings / rejected
 
 Only mark a model supported after its required gates pass. Keep untested models
 explicitly unverified even when they share an OS or product family.
+
+Managed signage policy tests cover exact body/app admission, missing/duplicate
+app rejection, landscape/portrait bounds, removal of HDR/wide-codec/4K/high-rate
+client settings, unsupported codec/transport rejection and one-time ordered
+transport/start signaling. These are server policy tests, not a complete neck
+adapter or physical media test. The new Rust changes await full branch CI.
