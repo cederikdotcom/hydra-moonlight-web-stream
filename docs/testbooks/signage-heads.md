@@ -26,6 +26,32 @@ Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
 - NOT RUN: APK/WGT build or installation, live body/relay streaming and every
   target-device acceptance gate below. No production deployment performed.
 
+## Issue 770 shared-input checks (2026-10-13)
+
+- PASS: `node --test tests/*.test.cjs`: 19 tests, comprising the existing eight
+  probe checks and eleven production browser-input tests. The input suite
+  transpiles the real TypeScript modules with the pinned TypeScript dependency;
+  browser APIs and generated enum bindings are fixtures. Packet bytes are
+  decoded independently of the production serializer.
+- PASS: native down/move/up/cancel, simultaneous contacts, invalid/orphan input,
+  out-of-bounds and hidden-frame releases, portrait/letterbox coordinates,
+  cancellation without click, drag release, delayed-tap cancellation, held and
+  simultaneous keys, focus recovery, closed-channel cleanup, listener removal,
+  mouse buttons/wheel/relative movement and sparse gamepad slots.
+- ADDED, execution pending: Rust relay decoder tests for all four event codes,
+  legacy cancel compatibility, packet fields, truncated and unknown messages.
+- BLOCKED locally: full TypeScript checking needs generated Rust bindings;
+  `tsc --noEmit` reports missing `web/api_bindings.js` plus downstream errors.
+  No full local Rust build attempted given disk constraints. Existing CI is
+  the intended full build check; its earlier `printf-compat` failure remains
+  separate from these passing browser tests.
+- NOT RUN: physical peripherals, real relay/body input delivery, Tizen runtime,
+  WGT signing/install/update and every model/firmware gate below.
+
+Run `npm ci` on a build worker before `npm test`; the new input suite uses the
+repository's existing pinned TypeScript dependency. When working in an isolated
+local worktree, reuse installed dependencies without modifying another checkout.
+
 ## Before hardware arrives
 
 From this repository:

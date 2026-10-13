@@ -29,7 +29,9 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Test standalone browser diagnostics
+      - name: Install browser test dependencies
+        run: npm ci
+      - name: Test browser input and diagnostics
         run: |
           node --check web/signage-probe.js
           npm test

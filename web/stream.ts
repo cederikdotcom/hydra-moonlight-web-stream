@@ -139,13 +139,15 @@ class ViewerApp implements Component {
         this.addListeners(document.getElementById("input") as HTMLDivElement)
 
         window.addEventListener("blur", () => {
-            this.stream?.getInput().raiseAllKeys()
+            this.stream?.getInput().setFocused(false)
+        })
+        window.addEventListener("focus", () => {
+            this.stream?.getInput().setFocused(document.visibilityState === "visible")
         })
         document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState !== "visible") {
-                this.stream?.getInput().raiseAllKeys()
-            }
+            this.stream?.getInput().setFocused(document.visibilityState === "visible" && document.hasFocus())
         })
+        window.addEventListener("pagehide", () => this.stream?.getInput().onStreamStop())
 
         document.addEventListener("pointerlockchange", this.onPointerLockChange.bind(this))
         document.addEventListener("fullscreenchange", this.onFullscreenChange.bind(this))
@@ -153,7 +155,7 @@ class ViewerApp implements Component {
         window.addEventListener("gamepadconnected", this.onGamepadConnect.bind(this))
         window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect.bind(this))
         // Connect all gamepads
-        for (const gamepad of navigator.getGamepads()) {
+        for (const gamepad of navigator.getGamepads?.() ?? []) {
             if (gamepad != null) {
                 this.onGamepadAdd(gamepad)
             }

@@ -280,6 +280,7 @@ export class Stream implements Component {
 
     private setTransport(transport: Transport) {
         if (this.transport) {
+            this.input.onStreamStop()
             this.transport.close()
         }
 
@@ -444,6 +445,7 @@ export class Stream implements Component {
 
         return new Promise((resolve, reject) => {
             transport.onclose = (shutdown) => {
+                if (this.transport === transport) this.input.onStreamStop()
                 resolve(shutdown)
             }
         })
@@ -469,6 +471,7 @@ export class Stream implements Component {
 
         return new Promise((resolve, reject) => {
             transport.onclose = (shutdown) => {
+                if (this.transport === transport) this.input.onStreamStop()
                 resolve(shutdown)
             }
         })
@@ -690,6 +693,7 @@ export class Stream implements Component {
         }
     }
     private onWsClose() {
+        this.input.onStreamStop()
         this.debugLog(`Web Socket Closed`)
     }
     private onError(event: Event) {
@@ -716,6 +720,7 @@ export class Stream implements Component {
     }
 
     stop(): Promise<boolean> {
+        this.input.onStreamStop()
         if (!this.sendGeneralMessage("Stop")) {
             return Promise.resolve(false)
         }

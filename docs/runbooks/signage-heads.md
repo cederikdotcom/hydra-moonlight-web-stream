@@ -45,6 +45,25 @@ workspace locations. The source may be on the original workstation, under
 another name/account, or inaccessible; it has not been inspected. Do not
 equate the tracker status `done` with hardware validation.
 
+### Issue 770 recovery and implementation evidence (2026-10-13)
+
+The persistent implementation goal runs in the separate `hydra:9` tmux window.
+Read-only retrieval of issues 26, 141 and 770 confirmed the original PoC report
+but provided no repository commit or source attachment. Authenticated GitHub
+lookups of `cederikdotcom/hydraheadsamsungtv` and the earlier `hydraheadtizen`
+name returned HTTP 404; a fresh paginated accessible-repository inventory and
+repository search returned no Samsung/Tizen source. Searches of local agent
+histories, backups, source registry, `iamneo`, `neo`, logs and workspace paths
+found tracker references, not the launcher files. This is an access/location
+blocker, not evidence that the code never existed. Recovery needs an accessible
+original repository URL/commit or original workstation/archive location.
+
+Independent shared-input work is on branch `issue-770-signage-input` in an
+isolated worktree. Original Samsung source adaptation, manifest/API audit,
+enrollment and mediated lifecycle, per-experience profile selection and package
+build/signing remain open. No replacement Samsung source lineage or installable
+WGT is claimed. No SDK was installed on the nearly full shared workstation.
+
 ## Direction
 
 The owner requested preparation of heads for both makes and proposed a dedicated
@@ -264,14 +283,28 @@ experiences, and native multitouch for experiences that handle touch contacts.
 The app must define pinch/zoom behavior; forwarding two contacts does not
 automatically make a mouse-only experience understand a pinch.
 
-**Source defect found, not fixed by this preparation:** native `onTouchEnd()`
-sends event code 2, but the Rust decoder maps code 2 to
-`TouchEventType::Cancel`. `onTouchCancel()` also calls the end handler. Separate
-normal release and cancellation across the browser/relay protocol, with tests
-for tap, drag, multiple contacts, cancelled gestures and release outside the
-video rectangle. Also verify that mouse-emulation cancellation does not produce
-a click. These are prerequisites for native-touch readiness, even before the
-Samsung firmware-specific validation.
+**Input remediation in issue 770:** the browser now sends event 3 for normal
+native release and event 2 for cancellation; the relay decodes these as `Up` and
+`Cancel` respectively. Event 2 retains its legacy meaning. Roll out a tested
+relay before serving the updated client; older relays reject event 3. Do not
+roll the relay back alone while new clients are active. No deployment has been
+performed by this work.
+
+Contacts must start inside the actual video rectangle. Active contacts continue
+at the nearest edge when leaving it, and release/cancel still reaches the relay
+when the frame becomes hidden or has zero size. An orphan move/end cannot create
+a contact. Mouse-emulation cancellation releases any held button and cancels
+pending tap timers without synthesizing a click. Focus/visibility loss, input
+mode changes, stream stop and transport replacement clear pressed keys,
+buttons, contacts and controller registrations. Disconnect cleanup is best
+effort: a dead transport cannot deliver release packets; the body/relay session
+must also close to guarantee remote cleanup.
+
+The input remains captured in the actual stream document (including when that
+document is framed), using the video renderer's rectangle. Software tests cover
+letterboxed/portrait rectangles, native multitouch, taps, cancellation, held
+keys, mouse buttons/wheel/relative movement, controller slot reuse and reconnect.
+These tests do not prove physical input delivery, kiosk behavior or Tizen decode.
 
 `web/stream/input.ts` defaults to `mouseRelative`; `pointAndDrag` and native
 `touch` modes already exist. For public touch displays, select and persist the

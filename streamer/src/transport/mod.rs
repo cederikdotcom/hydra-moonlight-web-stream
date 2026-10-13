@@ -336,6 +336,7 @@ impl InboundPacket {
                     0 => TouchEventType::Down,
                     1 => TouchEventType::Move,
                     2 => TouchEventType::Cancel,
+                    3 => TouchEventType::Up,
                     _ => {
                         warn!("[InboundPacket]: received invalid touch event type");
                         return None;
@@ -657,4 +658,52 @@ pub trait TransportSender {
     async fn on_ipc_message(&self, message: ServerIpcMessage) -> Result<(), TransportError>;
 
     async fn close(&self) -> Result<(), TransportError>;
+}
+
+#[cfg(test)]
+mod touch_packet_tests {
+    use super::*;
+
+    fn packet(event: u8) -> Vec<u8> {
+        let mut bytes = vec![event];
+        bytes.extend(19_u32.to_be_bytes());
+        for value in [0.25_f32, 0.75, 0.5, 3.0, 4.0] {
+            bytes.extend(value.to_be_bytes());
+        }
+        bytes.extend(90_u16.to_be_bytes());
+        bytes
+    }
+
+    #[test]
+    fn touch_release_and_cancel_are_distinct_and_legacy_cancel_is_preserved() {
+        for code in 0..=3 {
+            let decoded = InboundPacket::deserialize(
+                TransportChannel(TransportChannelId::TOUCH),
+                &packet(code),
+            );
+            let Some(InboundPacket::Touch {
+                event_type, pointer_id, x, y, pressure_or_distance,
+                contact_area_major, contact_area_minor, rotation,
+            }) = decoded else { panic!("touch packet did not decode"); };
+            assert!(matches!((code, event_type),
+                (0, TouchEventType::Down) | (1, TouchEventType::Move) |
+                (2, TouchEventType::Cancel) | (3, TouchEventType::Up)));
+            assert_eq!(pointer_id, 19);
+            assert_eq!((x, y, pressure_or_distance), (0.25, 0.75, 0.5));
+            assert_eq!((contact_area_major, contact_area_minor, rotation), (3.0, 4.0, Some(90)));
+        }
+    }
+
+    #[test]
+    fn truncated_and_unknown_touch_packets_are_rejected() {
+        let bytes = packet(3);
+        for length in 0..bytes.len() {
+            assert!(InboundPacket::deserialize(
+                TransportChannel(TransportChannelId::TOUCH), &bytes[..length],
+            ).is_none());
+        }
+        assert!(InboundPacket::deserialize(
+            TransportChannel(TransportChannelId::TOUCH), &packet(255),
+        ).is_none());
+    }
 }
