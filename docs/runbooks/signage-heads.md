@@ -47,15 +47,64 @@ equate the tracker status `done` with hardware validation.
 
 ## Direction
 
-Prefer the displays' built-in computers. Reuse the browser relay for the Samsung
-trial and the existing Android Moonlight/Hydra code for the iiyama trial. An
-external Linux head connected by HDMI and USB is the fallback proposal. This
-preference is an engineering assumption pending the owner's response, not a
-decision to purchase additional computers.
+The owner requested preparation of heads for both makes and proposed a dedicated
+Tizen 6.5 target. The recommended implementation direction is a dedicated Samsung
+signage web application targeting 6.5, initially using the existing WebRTC relay,
+and a native Android flat application for iiyama using the existing
+Moonlight/Hydra code. A dedicated Tizen package does not require a new native
+media transport. Keep the direct GameStream/WASM proposal from issue 141 as an
+alternative to assess if the relay path fails a measured requirement.
+
+Prefer the displays' built-in computers. An external Linux head connected by
+HDMI and, for touch panels, USB is the fallback proposal. No additional computer
+purchase or production deployment has been selected.
 
 Do not create three model-specific forks. The useful split is Tizen signage,
 Android flat signage, and an external desktop head. Model/firmware capability
 profiles should sit above those shared transports.
+
+### Preparation scope before the displays arrive
+
+| Workstream | Concrete deliverable | Verification available without a panel |
+|---|---|---|
+| Samsung head | Recover `hydraheadsamsungtv`; adapt its manifest and used APIs to 6.5; provide enrollment, assigned-body launch, connection state, retry and a packaged capability probe. Reuse the browser media/input client. | Manifest/API audit, reproducible test package, local browser tests and fake-server lifecycle tests. A 6.5 manifest alone does not prove installation or compatibility. |
+| iiyama head | A separately identified Android flat build using the existing Hydra layer and Moonlight `Game` activity. Exclude Quest/OpenXR requirements from this build, prevent VR launch, apply conservative stream settings and retain Quest behavior in its existing build. | Android CI build, merged-manifest and native-library ABI inspection, profile/default tests, fake-server enrollment and assignment tests. Android 8 is the compatibility baseline; userspace ABI remains unknown. |
+| Shared fleet contract | Explicit flat-head capabilities, venue scope, stable identity, revocable device credentials, heartbeat, body/experience assignment, stop and reassignment. Update cluster enrollment and head-role allowlists together with the clients. | Contract tests for both platforms, unauthorized assignment rejection, revocation, stale responses, retry and session cleanup. Do not use a Quest identity for an iiyama screen. |
+| Input | Per-experience absolute mouse/touch mode, corrected touch release/cancel protocol, keyboard/mouse/gamepad forwarding and release cleanup. | Protocol and input tests, including held keys, multiple contacts, cancellation, focus loss, out-of-bounds release and reconnect. These do not prove the TV exposes physical peripherals. |
+| Delivery | Versioned test artifacts and an install/update procedure per platform, with a recorded rollback route. | Build/signing configuration checks and artifact inspection. Samsung signing privileges and the actual signage installation route still need confirmation; do not label an unsigned archive installable. |
+
+The shared contract describes behavior, not a requirement to share UI code or
+media transports. Samsung uses WebRTC through the relay initially; Android can
+reuse native GameStream. For Samsung, mediate assignment and session creation on
+the server and expose only device-scoped credentials. Do not copy the desktop
+head-config response wholesale into a browser: the current handler can include
+provider Sunshine credentials.
+
+HydraCluster already persists `body_id` and `app_id` through
+`POST /api/v1/nodes/{id}/head-assignment`; the head-config endpoint resolves that
+assignment to stream configuration. The missing work is the platform client and
+appropriate enrollment/authorization support. A HydraVenues asset or a network
+connection does not itself enroll a head or establish a working stream.
+
+### FTI deployment constraints
+
+The prepared FTI Experience Zone inventory has 55-inch Samsung QM55B-T displays
+at CC38c, CC38d, CC38e and DT9; DT9 is portrait. The 43-inch positions at CC23 and
+CC38h (two screens) retain Samsung QM43B-T / iiyama T4362AS-B1 allocation pending.
+The owner clarified that CC38a, CC38b and DT23 are regular TVs whose model
+numbers are still pending. Do not apply the QMB-T/Tizen 6.5 profile to them based
+only on the word TV. All planned displays connect over the network.
+
+DT23 also requires physical mouse and keyboard input for its PC game, alongside
+the existing gamepad requirement. Record TV-native input as conditional on the
+actual model and client: typing into a TV search box does not demonstrate held
+keys, simultaneous keys or relative mouse capture in a streamed game. The
+fallback connects the peripherals to an external head and the head to the TV
+by HDMI, with the body reached over the network.
+
+These inventory edits are prepared locally but have not been saved to the live
+venue: the automation account was denied venue access and an authorized sign-in
+is still required. No head or body has been allocated by this inventory work.
 
 ## Hardware evidence
 
