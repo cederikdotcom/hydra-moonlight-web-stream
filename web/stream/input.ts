@@ -43,7 +43,7 @@ export type MouseMode = "relative" | "follow" | "pointAndDrag"
 export type StreamInputConfig = {
     mouseMode: MouseMode
     mouseScrollMode: MouseScrollMode
-    touchMode: "touch" | "mouseRelative" | "pointAndDrag"
+    touchMode: "touch" | "mouseRelative" | "pointAndDrag" | "absoluteMouse"
     controllerConfig: ControllerConfig
 }
 
@@ -60,6 +60,14 @@ export function defaultStreamInputConfig(): StreamInputConfig {
     }
 }
 
+// The mediator supplies this per-session choice on the actual stream URL.
+// Other browser sessions retain their existing defaults.
+export function signageStreamInputConfig(mode: string | null): StreamInputConfig {
+    const config = defaultStreamInputConfig()
+    if (mode === "absoluteMouse" || mode === "touch") config.touchMode = mode
+    return config
+}
+
 export type PredictedTouchAction = "default" | "drag" | "scroll" | "screenKeyboard"
 export type ScreenKeyboardSetVisibleEvent = CustomEvent<{ visible: boolean }>
 
@@ -70,6 +78,9 @@ export class StreamInput {
     private buffer: ByteBuffer = new ByteBuffer(1024)
 
     private connected = false
+    private focused = true
+    private readonly onTouchDataBound = this.onTouchData.bind(this)
+    private readonly onControllerDataBound = this.onControllerData.bind(this)
     private config: StreamInputConfig
     private capabilities: StreamCapabilities = { touch: true }
     // Size of the streamer device
@@ -100,6 +111,7 @@ export class StreamInput {
         throw `Failed to get channel ${id} as data transport channel`
     }
     setTransport(transport: Transport) {
+        this.onStreamStop()
         this.keyboard = this.getDataChannel(transport, TransportChannelId.KEYBOARD)
 
         this.mouseReliable = this.getDataChannel(transport, TransportChannelId.MOUSE_RELIABLE)
@@ -107,16 +119,16 @@ export class StreamInput {
         this.mouseRelative = this.getDataChannel(transport, TransportChannelId.MOUSE_RELATIVE)
 
         if (this.touch) {
-            this.touch.removeReceiveListener(this.onTouchData.bind(this))
+            this.touch.removeReceiveListener(this.onTouchDataBound)
         }
         this.touch = this.getDataChannel(transport, TransportChannelId.TOUCH)
-        this.touch.addReceiveListener(this.onTouchData.bind(this))
+        this.touch.addReceiveListener(this.onTouchDataBound)
 
         if (this.controllers) {
-            this.controllers.removeReceiveListener(this.onTouchData.bind(this))
+            this.controllers.removeReceiveListener(this.onControllerDataBound)
         }
         this.controllers = this.getDataChannel(transport, TransportChannelId.CONTROLLERS)
-        this.controllers.addReceiveListener(this.onControllerData.bind(this))
+        this.controllers.addReceiveListener(this.onControllerDataBound)
 
         this.controllerInputs.length = 0
         for (let i = 0; i < 16; i++) {
@@ -127,11 +139,13 @@ export class StreamInput {
     }
 
     setConfig(config: StreamInputConfig) {
+        this.releaseAllInputs()
         Object.assign(this.config, config)
 
         // Touch
         this.primaryTouch = null
         this.touchTracker.clear()
+        if (this.connected && this.focused) this.registerBufferedControllers()
     }
     getConfig(): StreamInputConfig {
         return this.config
@@ -155,10 +169,50 @@ export class StreamInput {
         this.registerBufferedControllers()
     }
 
+    // Release while the old transport is still available. Each send is best effort:
+    // a closed channel must not prevent local cleanup or release of other inputs.
+    releaseAllInputs() {
+        const attempt = (send: () => void) => { try { send() } catch { /* disconnected */ } }
+        this.clearPendingClick()
+        for (const key of this.pressedKeys) attempt(() => this.sendKey(false, key, 0))
+        this.pressedKeys.clear()
+        for (const button of this.pressedMouseButtons) attempt(() => this.sendMouseButton(false, button))
+        this.pressedMouseButtons.clear()
+        for (const [id, contact] of this.nativeTouches) {
+            attempt(() => this.sendTouchPacket(2, id, contact))
+        }
+        this.nativeTouches.clear()
+        this.touchTracker.clear()
+        this.primaryTouch = null
+        this.touchMouseAction = "default"
+        for (let id = 0; id < this.gamepads.length; id++) {
+            if (this.gamepads[id]) attempt(() => this.sendControllerRemove(id))
+        }
+        this.gamepads = []
+        this.gamepadRumbleCurrent = []
+        if (this.gamepadRumbleInterval != null) {
+            window.clearInterval(this.gamepadRumbleInterval)
+            this.gamepadRumbleInterval = null
+        }
+    }
+
+    setFocused(focused: boolean) {
+        if (this.focused == focused) return
+        this.focused = focused
+        if (!focused) this.releaseAllInputs()
+        else if (this.connected) this.registerBufferedControllers()
+    }
+
+    onStreamStop() {
+        this.releaseAllInputs()
+        this.connected = false
+    }
+
     // -- Keyboard
     private pressedKeys: Set<number> = new Set()
 
     onKeyDown(event: KeyboardEvent) {
+        if (!this.connected || !this.focused) return
         this.sendKeyEvent(true, event)
     }
     onKeyUp(event: KeyboardEvent) {
@@ -247,7 +301,9 @@ export class StreamInput {
     }
 
     // -- Mouse
+    private pressedMouseButtons: Set<number> = new Set()
     onMouseDown(event: MouseEvent, rect: DOMRect) {
+        if (!this.connected || !this.focused) return
         const button = convertToButton(event)
         if (button == null) {
             return
@@ -272,6 +328,7 @@ export class StreamInput {
         }
     }
     onMouseMove(event: MouseEvent, rect: DOMRect) {
+        if (!this.connected || !this.focused) return
         if (this.config.mouseMode == "relative") {
             this.sendMouseMoveClientCoordinates(event.movementX, event.movementY, rect)
         } else if (this.config.mouseMode == "follow") {
@@ -284,6 +341,7 @@ export class StreamInput {
         }
     }
     onMouseWheel(event: WheelEvent) {
+        if (!this.connected || !this.focused) return
         if (this.config.mouseScrollMode == "highres") {
             this.sendMouseWheelHighRes(event.deltaX, -event.deltaY)
         } else if (this.config.mouseScrollMode == "normal") {
@@ -301,6 +359,7 @@ export class StreamInput {
         trySendChannel(this.mouseRelative, this.buffer)
     }
     sendMouseMoveClientCoordinates(movementX: number, movementY: number, rect: DOMRect) {
+        if (rect.width <= 0 || rect.height <= 0 || !Number.isFinite(movementX) || !Number.isFinite(movementY)) return
         const scaledMovementX = movementX / rect.width * this.streamerSize[0];
         const scaledMovementY = movementY / rect.height * this.streamerSize[1];
 
@@ -340,6 +399,8 @@ export class StreamInput {
     }
     // Note: button = StreamMouseButton.
     sendMouseButton(isDown: boolean, button: number) {
+        if (isDown) this.pressedMouseButtons.add(button)
+        else this.pressedMouseButtons.delete(button)
         this.buffer.reset()
 
         this.buffer.putU8(2)
@@ -392,6 +453,14 @@ export class StreamInput {
     private primaryTouch: number | null = null
     // If the next touch is a double tap?
     private nextTouchDoubleTap: boolean = false
+    private pendingClick: ReturnType<typeof setTimeout> | null = null
+    private nativeTouches = new Map<number, { x: number, y: number, force: number, radiusX: number, radiusY: number, rotationAngle: number }>()
+
+    private clearPendingClick() {
+        if (this.pendingClick != null) clearTimeout(this.pendingClick)
+        this.pendingClick = null
+        this.nextTouchDoubleTap = false
+    }
 
     private onTouchData(data: ArrayBuffer) {
         const buffer = new ByteBuffer(new Uint8Array(data))
@@ -431,18 +500,27 @@ export class StreamInput {
     }
 
     onTouchStart(event: TouchEvent, rect: DOMRect) {
+        if (!this.connected || !this.focused) return
         for (const touch of event.changedTouches) {
-            this.updateTouchTracker(touch)
+            if (this.calcNormalizedPosition(touch.clientX, touch.clientY, rect)) this.updateTouchTracker(touch)
         }
 
-        if (this.config.touchMode == "touch") {
+        if (this.config.touchMode == "absoluteMouse") {
+            for (const touch of event.changedTouches) {
+                if (this.primaryTouch == null && this.touchTracker.has(touch.identifier)) {
+                    this.primaryTouch = touch.identifier
+                    this.sendMousePositionClientCoordinates(touch.clientX, touch.clientY, rect, true, StreamMouseButton.LEFT)
+                    this.touchTracker.get(touch.identifier)!.mouseClicked = StreamMouseButton.LEFT
+                }
+            }
+        } else if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
                 this.sendTouch(0, touch, rect)
             }
         } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
             // Set primary touch if it doesn't exists currently
             for (const touch of event.changedTouches) {
-                if (this.primaryTouch == null) {
+                if (this.primaryTouch == null && this.touchTracker.has(touch.identifier)) {
                     this.primaryTouch = touch.identifier
                     this.touchMouseAction = "default"
                 }
@@ -459,7 +537,7 @@ export class StreamInput {
 
                 this.touchMouseAction = "drag"
 
-                this.nextTouchDoubleTap = false
+                this.clearPendingClick()
             }
 
             // Detect scrolling
@@ -492,6 +570,7 @@ export class StreamInput {
     }
 
     onTouchUpdate(rect: DOMRect) {
+        if (!this.connected || !this.focused) return
         if (this.config.touchMode == "pointAndDrag") {
             if (this.primaryTouch == null) {
                 return
@@ -511,7 +590,12 @@ export class StreamInput {
     }
 
     onTouchMove(event: TouchEvent, rect: DOMRect) {
-        if (this.config.touchMode == "touch") {
+        if (!this.connected || !this.focused) return
+        if (this.config.touchMode == "absoluteMouse") {
+            for (const touch of event.changedTouches) {
+                if (touch.identifier == this.primaryTouch) this.moveAbsoluteTouch(touch, rect)
+            }
+        } else if (this.config.touchMode == "touch") {
             for (const touch of event.changedTouches) {
                 this.sendTouch(1, touch, rect)
             }
@@ -584,14 +668,22 @@ export class StreamInput {
         }
 
         for (const touch of event.changedTouches) {
-            this.updateTouchTracker(touch)
+            if (this.touchTracker.has(touch.identifier)) this.updateTouchTracker(touch)
         }
     }
 
     onTouchEnd(event: TouchEvent, rect: DOMRect) {
-        if (this.config.touchMode == "touch") {
+        if (this.config.touchMode == "absoluteMouse") {
             for (const touch of event.changedTouches) {
-                this.sendTouch(2, touch, rect)
+                if (touch.identifier == this.primaryTouch) {
+                    this.moveAbsoluteTouch(touch, rect)
+                    this.sendMouseButton(false, StreamMouseButton.LEFT)
+                    this.primaryTouch = null
+                }
+            }
+        } else if (this.config.touchMode == "touch") {
+            for (const touch of event.changedTouches) {
+                this.sendTouch(3, touch, rect)
             }
         } else if (this.config.touchMode == "mouseRelative" || this.config.touchMode == "pointAndDrag") {
             for (const touch of event.changedTouches) {
@@ -615,6 +707,7 @@ export class StreamInput {
                     const doClick = (maybeDoubleTap: boolean) => {
                         // See if we should make a click
                         if (
+                            this.calcNormalizedPosition(touch.clientX, touch.clientY, rect) != null &&
                             touchOriginDistance < TOUCH_AS_CLICK_MAX_DISTANCE &&
                             // mouse relative:
                             // - when having moved the mouse we shouldn't allow a click
@@ -646,8 +739,10 @@ export class StreamInput {
                         this.nextTouchDoubleTap = true
 
                         // Schedule the click if it's not a double tap
-                        setTimeout(() => {
-                            if (this.primaryTouch == null) {
+                        if (this.pendingClick != null) clearTimeout(this.pendingClick)
+                        this.pendingClick = setTimeout(() => {
+                            this.pendingClick = null
+                            if (this.connected && this.focused && this.primaryTouch == null) {
                                 // no click present -> no double click -> We need to do the actual click
                                 doClick(false)
 
@@ -668,40 +763,67 @@ export class StreamInput {
     }
 
     onTouchCancel(event: TouchEvent, rect: DOMRect) {
-        this.onTouchEnd(event, rect)
+        this.clearPendingClick()
+        for (const touch of event.changedTouches) {
+            if (this.config.touchMode == "touch") this.sendTouch(2, touch, rect)
+            const oldTouch = this.touchTracker.get(touch.identifier)
+            if (oldTouch?.mouseClicked != null) this.sendMouseButton(false, oldTouch.mouseClicked)
+            this.touchTracker.delete(touch.identifier)
+            if (this.primaryTouch == touch.identifier) {
+                this.primaryTouch = null
+                this.touchMouseAction = "default"
+            }
+        }
+    }
+
+    private moveAbsoluteTouch(touch: Touch, rect: DOMRect) {
+        if (rect.width <= 0 || rect.height <= 0 || !Number.isFinite(touch.clientX) || !Number.isFinite(touch.clientY)) return
+        const x = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+        const y = Math.max(0, Math.min(1, (touch.clientY - rect.top) / rect.height))
+        // Same ordered reliable channel as button transitions, including the
+        // final position before release. No trackpad acceleration/delay.
+        this.sendMousePosition(x * 4096, y * 4096, 4096, 4096, true)
     }
 
     private calcNormalizedPosition(clientX: number, clientY: number, rect: DOMRect): [number, number] | null {
+        if (rect.width <= 0 || rect.height <= 0) return null
         const x = (clientX - rect.left) / rect.width
         const y = (clientY - rect.top) / rect.height
-
-        if (x < 0 || x > 1.0 || y < 0 || y > 1.0) {
-            // invalid touch
-            return null
-        }
+        if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1) return null
         return [x, y]
     }
+
+    // Wire protocol: 0 Down, 1 Move, 2 Cancel (legacy), 3 Up.
+    // Keep Cancel=2 for existing clients; deploy the updated relay before clients.
     private sendTouch(type: number, touch: Touch, rect: DOMRect) {
-        this.buffer.reset()
-
-        this.buffer.putU8(type)
-
-        this.buffer.putU32(touch.identifier)
-
+        const old = this.nativeTouches.get(touch.identifier)
         const position = this.calcNormalizedPosition(touch.clientX, touch.clientY, rect)
-        if (!position) {
-            return
+        if (type == 0 ? !position || old != null : !old) return
+        // Continue contacts outside the video at the nearest edge. A hidden/zero
+        // size frame still releases at the last valid position.
+        let [x, y] = position ?? [old!.x, old!.y]
+        if (!position && rect.width > 0 && rect.height > 0 && Number.isFinite(touch.clientX) && Number.isFinite(touch.clientY)) {
+            x = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width))
+            y = Math.max(0, Math.min(1, (touch.clientY - rect.top) / rect.height))
         }
-        const [x, y] = position
-        this.buffer.putF32(x)
-        this.buffer.putF32(y)
+        const contact = { x, y, force: touch.force, radiusX: touch.radiusX, radiusY: touch.radiusY, rotationAngle: touch.rotationAngle }
+        if (type == 2 || type == 3) {
+            contact.force = 0
+            this.nativeTouches.delete(touch.identifier)
+        } else this.nativeTouches.set(touch.identifier, contact)
+        this.sendTouchPacket(type, touch.identifier, contact)
+    }
 
-        this.buffer.putF32(touch.force)
-
-        this.buffer.putF32(touch.radiusX)
-        this.buffer.putF32(touch.radiusY)
-        this.buffer.putU16(touch.rotationAngle)
-
+    private sendTouchPacket(type: number, id: number, contact: { x: number, y: number, force: number, radiusX: number, radiusY: number, rotationAngle: number }) {
+        this.buffer.reset()
+        this.buffer.putU8(type)
+        this.buffer.putU32(id)
+        this.buffer.putF32(contact.x)
+        this.buffer.putF32(contact.y)
+        this.buffer.putF32(type == 2 || type == 3 ? 0 : contact.force)
+        this.buffer.putF32(contact.radiusX)
+        this.buffer.putF32(contact.radiusY)
+        this.buffer.putU16(contact.rotationAngle)
         trySendChannel(this.touch, this.buffer)
     }
 
@@ -714,13 +836,10 @@ export class StreamInput {
     }
 
     // -- Controller
-    // Wait for stream to connect and then send controllers
-    private bufferedControllers: Array<number> = []
+    // Enumerate on start/resume so browser indices cannot become stale.
     private registerBufferedControllers() {
-        const gamepads = navigator.getGamepads()
-
-        for (const index of this.bufferedControllers.splice(0)) {
-            const gamepad = gamepads[index]
+        if (!this.focused || typeof navigator.getGamepads !== "function") return
+        for (const gamepad of navigator.getGamepads()) {
             if (gamepad) {
                 this.onGamepadConnect(gamepad)
             }
@@ -743,8 +862,7 @@ export class StreamInput {
     private gamepadRumbleInterval: number | null = null
 
     onGamepadConnect(gamepad: Gamepad) {
-        if (!this.connected) {
-            this.bufferedControllers.push(gamepad.index)
+        if (!this.connected || !this.focused) {
             return
         }
 
@@ -771,7 +889,7 @@ export class StreamInput {
         }
 
         // Reset rumble
-        this.gamepadRumbleCurrent[0] = { lowFrequencyMotor: 0, highFrequencyMotor: 0, leftTrigger: 0, rightTrigger: 0 }
+        this.gamepadRumbleCurrent[gamepad.index] = { lowFrequencyMotor: 0, highFrequencyMotor: 0, leftTrigger: 0, rightTrigger: 0 }
 
         let capabilities = 0
 
@@ -797,7 +915,7 @@ export class StreamInput {
             }
         }
 
-        this.sendControllerAdd(this.gamepads.length - 1, SUPPORTED_BUTTONS, capabilities)
+        this.sendControllerAdd(id, SUPPORTED_BUTTONS, capabilities)
 
         if (gamepad.mapping != "standard") {
             console.warn(`[Gamepad]: Unable to read values of gamepad with mapping ${gamepad.mapping}`)
@@ -806,10 +924,7 @@ export class StreamInput {
     onGamepadDisconnect(event: GamepadEvent) {
         const index = this.gamepads.findIndex(value => value?.gamepadIndex == event.gamepad.index)
         if (index != -1) {
-            const id = this.gamepads[index]?.gamepadIndex
-            if (id != null) {
-                this.sendControllerRemove(id)
-            }
+            this.sendControllerRemove(index)
 
             this.gamepads[index] = null
         }
@@ -817,6 +932,7 @@ export class StreamInput {
 
     private lastGamepadUpdate: number = performance.now()
     onGamepadUpdate() {
+        if (!this.connected || !this.focused) return
         if (this.config.controllerConfig.sendIntervalOverride != null) {
             const now = performance.now()
             if (now - this.lastGamepadUpdate < (1000 / this.config.controllerConfig.sendIntervalOverride)) {
@@ -828,7 +944,7 @@ export class StreamInput {
         for (let gamepadId = 0; gamepadId < this.gamepads.length; gamepadId++) {
             const oldGamepadState = this.gamepads[gamepadId]
             if (oldGamepadState == null) {
-                return
+                continue
             }
             const gamepad = navigator.getGamepads()[oldGamepadState.gamepadIndex]
             if (!gamepad) {
@@ -897,7 +1013,7 @@ export class StreamInput {
     private setGamepadEffect(id: number, _ty: "dual-rumble" | "trigger-rumble", params: { lowFrequencyMotor: number, highFrequencyMotor: number } | { leftTrigger: number, rightTrigger: number }) {
         const rumble = this.gamepadRumbleCurrent[id]
 
-        Object.assign(rumble, params)
+        if (rumble) Object.assign(rumble, params)
     }
 
     private onGamepadRumbleInterval() {

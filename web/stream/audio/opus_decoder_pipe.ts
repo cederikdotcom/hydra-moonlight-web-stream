@@ -1,6 +1,9 @@
 import { OpusMultistreamDecoder } from "../../libopus/index.js";
-import loadOpus from "../../libopus/libopus.js";
-import { MainModule as OpusModule } from "../../libopus/libopus.js";
+// Type only on purpose: a value import of the Emscripten glue puts it in the
+// main bundle, where it is evaluated on page load. Tizen 6.5 (Chromium M85)
+// cannot compile this module at all, so loading it eagerly kills the whole
+// page before any capability check runs.
+import type { MainModule as OpusModule } from "../../libopus/libopus.js";
 import { Logger } from "../log.js";
 import { Pipe, PipeInfo } from "../pipeline/index.js";
 import { addPipePassthrough } from "../pipeline/pipes.js";
@@ -11,8 +14,21 @@ import { AudioDecodeUnit, AudioPlayerSetup, DataAudioPlayer, PcmAudioPlayer } fr
 export class OpusAudioDecoderPipe implements DataAudioPlayer {
 
     static async getInfo(): Promise<PipeInfo> {
+        // Claiming support unconditionally made this pipe selectable on
+        // engines that cannot run it. On Samsung QMB signage (Tizen 6.5,
+        // Chromium M85) WebAssembly.instantiateStreaming throws
+        // "return count of 2 exceeds that of 1": the module uses multi-value
+        // returns, which that engine rejects. Importing alone does not reveal
+        // it, so instantiate to find out, exactly as OpenH264DecoderPipe does.
+        let environmentSupported = false
+        try {
+            const module = await import("../../libopus/libopus.js")
+            await module.default()
+            environmentSupported = true
+        } catch (e) { }
+
         return {
-            environmentSupported: true
+            environmentSupported
         }
     }
 
@@ -36,7 +52,15 @@ export class OpusAudioDecoderPipe implements DataAudioPlayer {
     private channelBuffers: Array<Float32Array> = []
 
     constructor(base: PcmAudioPlayer, logger?: Logger) {
-        loadOpus().then(module => this.opusModule = module)
+        // Lazy, and failure must not become an unhandled rejection: an engine
+        // that cannot compile the module marks this pipe errored instead.
+        const loadOpusModule = async () => {
+            const module = await import("../../libopus/libopus.js")
+            return await module.default()
+        }
+        loadOpusModule()
+            .then(module => this.opusModule = module)
+            .catch(() => this.errored = true)
 
         this.logger = logger ?? null
 

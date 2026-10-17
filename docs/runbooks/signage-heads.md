@@ -45,6 +45,25 @@ workspace locations. The source may be on the original workstation, under
 another name/account, or inaccessible; it has not been inspected. Do not
 equate the tracker status `done` with hardware validation.
 
+### Issue 770 recovery and implementation evidence (2026-10-13)
+
+The persistent implementation goal runs in the separate `hydra:9` tmux window.
+Read-only retrieval of issues 26, 141 and 770 confirmed the original PoC report
+but provided no repository commit or source attachment. Authenticated GitHub
+lookups of `cederikdotcom/hydraheadsamsungtv` and the earlier `hydraheadtizen`
+name returned HTTP 404; a fresh paginated accessible-repository inventory and
+repository search returned no Samsung/Tizen source. Searches of local agent
+histories, backups, source registry, `iamneo`, `neo`, logs and workspace paths
+found tracker references, not the launcher files. This is an access/location
+blocker, not evidence that the code never existed. Recovery needs an accessible
+original repository URL/commit or original workstation/archive location.
+
+Independent shared-input work is on branch `issue-770-signage-input` in an
+isolated worktree. Original Samsung source adaptation, manifest/API audit,
+enrollment and mediated lifecycle, per-experience profile selection and package
+build/signing remain open. No replacement Samsung source lineage or installable
+WGT is claimed. No SDK was installed on the nearly full shared workstation.
+
 ## Direction
 
 The owner requested preparation of heads for both makes and proposed a dedicated
@@ -264,14 +283,38 @@ experiences, and native multitouch for experiences that handle touch contacts.
 The app must define pinch/zoom behavior; forwarding two contacts does not
 automatically make a mouse-only experience understand a pinch.
 
-**Source defect found, not fixed by this preparation:** native `onTouchEnd()`
-sends event code 2, but the Rust decoder maps code 2 to
-`TouchEventType::Cancel`. `onTouchCancel()` also calls the end handler. Separate
-normal release and cancellation across the browser/relay protocol, with tests
-for tap, drag, multiple contacts, cancelled gestures and release outside the
-video rectangle. Also verify that mouse-emulation cancellation does not produce
-a click. These are prerequisites for native-touch readiness, even before the
-Samsung firmware-specific validation.
+**Input remediation in issue 770:** the browser now sends event 3 for normal
+native release and event 2 for cancellation; the relay decodes these as `Up` and
+`Cancel` respectively. Event 2 retains its legacy meaning. Roll out a tested
+relay before serving the updated client; older relays reject event 3. Do not
+roll the relay back alone while new clients are active. No deployment has been
+performed by this work.
+
+Contacts must start inside the actual video rectangle. Active contacts continue
+at the nearest edge when leaving it, and release/cancel still reaches the relay
+when the frame becomes hidden or has zero size. An orphan move/end cannot create
+a contact. Mouse-emulation cancellation releases any held button and cancels
+pending tap timers without synthesizing a click. Focus/visibility loss, input
+mode changes, stream stop and transport replacement clear pressed keys,
+buttons, contacts and controller registrations. Disconnect cleanup is best
+effort: a dead transport cannot deliver release packets; the body/relay session
+must also close to guarantee remote cleanup.
+
+The input remains captured in the actual stream document (including when that
+document is framed), using the video renderer's rectangle. Software tests cover
+letterboxed/portrait rectangles, native multitouch, taps, cancellation, held
+keys, mouse buttons/wheel/relative movement, controller slot reuse and reconnect.
+These tests do not prove physical input delivery, kiosk behavior or Tizen decode.
+
+The stream document accepts `signageInput=absoluteMouse` or `signageInput=touch`
+on its session URL. The session mediator must choose this from the assigned
+experience's profile; unknown/absent values preserve ordinary browser defaults.
+`absoluteMouse` presses immediately at the primary contact, forwards direct
+positions on the ordered reliable mouse channel and releases at the final
+clamped position. Secondary fingers are ignored, with no delayed clicks,
+trackpad acceleration or pinch interpretation. Cancellation releases only.
+This behavior is distinct from the existing delayed `pointAndDrag` gestures.
+The URL parameter carries no credentials and creates no session authority.
 
 `web/stream/input.ts` defaults to `mouseRelative`; `pointAndDrag` and native
 `touch` modes already exist. For public touch displays, select and persist the
@@ -331,3 +374,124 @@ Remaining work, in order:
 
 No release, production deployment, enrollment, body allocation or device test
 was performed as part of this preparation.
+
+### Managed relay enforcement (#770, draft)
+
+An isolated relay process may set `managed_signage` in its server config:
+
+```json
+{"body_ip":"10.10.100.1","experience":"gallery","orientation":"landscape","profile":"tizen65-h264-sdr-720p30-v1"}
+```
+
+This binds signaling to the exact body IP and uniquely named positive app ID,
+refuses the global host-cancel API, and admits one managed connection until its
+streamer child has terminated. Repeated initialization/transport/start requests
+and WebSocket-media fallback are rejected. The server fixes stream requests to
+ordinary H.264, SDR Rec709, 1280x720 (720x1280 portrait), 30fps, 5Mbps and 1200-byte
+packets; frame/audio queues are bounded. Unsupported H.264 clients fail closed.
+The ordinary relay path is unchanged when the policy is absent.
+
+Before handing out a managed URL, the neck worker must fetch the authenticated
+local `GET /api/managed-signage` endpoint and verify the exact policy. Older relay
+builds silently ignore unknown config keys, so a successful process launch alone
+is insufficient. The pending worker adapter must also restrict externally
+proxied host/pair/admin endpoints and enforce process leases/cleanup. This policy
+is not a substitute for those controls or Samsung decoder validation.
+
+The managed capability response is now `{ "policy": {...}, "launch_only": true }`.
+Managed streamers use the library's `launch_stream` path and never automatically
+resume a running app. The legacy library `start_stream` resumes whenever any app
+is running; an earlier app-ID check cannot make that safe. A distinct
+`InitManaged` IPC envelope makes older streamers reject the managed startup
+instead of ignoring a new configuration field. Busy-host refusal still needs
+integration testing with the pending worker/provider ownership path; managed
+reconnect cannot resume an existing app until ownership is established.
+
+Input cleanup probes abortable event listener behavior independently of the presence
+of AbortController. Engines that ignore or reject the listener `signal` option
+receive a capture-aware cleanup shim; working native support is preserved. This
+prevents old input listeners surviving a stream reconnect on those engines. The
+shim also preserves once behavior and does not mutate caller options. This is
+compatibility preparation, not a Tizen firmware support claim.
+
+## Observed on real QM43B-T hardware, 2026-10-17
+
+First contact with the target panels, at the mobile kit. Six Samsung QMB panels
+on the venue LAN: `.161` QM43B (non-touch), `.162` and `.163` QM43B-T (touch),
+three more QMB whose exact model was not read. All report platform
+`22_PONTUSM_LFD`, Tizen, wired, 3840x2160, `developerMode: 0`. Model and
+capability come from the panel's own API, `GET http://<ip>:8001/api/v2/`, which
+is the only reliable way to tell a QM43B from a QM43B-T: DHCP reports both as
+"Samsung QMB Series".
+
+**A stream reached a panel.** `rupelmonde-castle-viewer` ran from a cloud body
+(GCP, Windows, Sunshine 2026.914) over WireGuard, through a moonlight-web relay
+on the kit laptop, into the panel's browser. Sunshine reported
+`server_state: Busy` while it played. This is the first time any Samsung panel
+has displayed a Hydra stream.
+
+### The software decode path is impossible on this firmware
+
+Tizen 6.5 is Chromium M85, and its engine **rejects the WASM decoders
+outright**: `WebAssembly.instantiateStreaming` throws
+`CompileError: return count of 2 exceeds that of 1`. The modules use
+multi-value returns. This is a property of the engine, not a setting, so no
+configuration avoids it:
+
+- `libopenh264` (software H.264) and `libopus` (audio) both fail to compile.
+- The opus glue was a value import, so it was evaluated on page load and the
+  page died before any capability check ran. Fixed in
+  `web/stream/audio/opus_decoder_pipe.ts`: type-only import, dynamic import at
+  use, and a `getInfo()` that proves the module instantiates. Importing alone
+  does not detect the fault; instantiating does.
+- Consequence: a browser-class head on Tizen 6.5 can only use the **hardware**
+  path, a WebRTC track rendered into a video element
+  (`forceVideoElementRenderer`). WebCodecs is absent too. Treat software decode
+  as unavailable on QMB-T, permanently.
+
+### Touch needs the mode set explicitly
+
+The stream page defaults `touchMode` to `mouseRelative`, which on a touch panel
+moves the cursor relatively instead of landing where the finger lands. It reads
+as "touch is broken". The page accepts `?signageInput=absoluteMouse` or
+`?signageInput=touch`; the mediator must set it per session, from the head's
+recorded input mode. Nothing is wrong with the panel's digitiser if touch feels
+dead: check this first.
+
+### What blocked the stream, in the order it bit us
+
+Each of these cost real time at the venue and none was a Samsung fault:
+
+1. **A QMB panel does not join the network** until its own menu is set to
+   **wired**. Before that it is invisible to the router, so no scan can find it.
+2. **The laptop's ufw** allowed inbound only from `10.10.0.0/16`, the WireGuard
+   range. The kit LAN is `10.110.0.0/20`, so the panel could reach the internet
+   but not a machine beside it. Symptom: "server not found" on the panel while
+   the laptop could reach the panel perfectly.
+3. **The panel's browser stores no cookies.** A `/check` page that echoed the
+   request's `Cookie` header proved it: `(none)`. Session-cookie auth cannot
+   work on these panels. The relay's `web_server.forwarded_header.username_header`
+   with a header-injecting proxy in front is the route that does.
+   `default_user_id` is ignored by the 3.0.0-prerelease.9 build.
+4. **The browser autocompletes aggressively from history** and will keep
+   loading a cached page and a stale URL no matter what is typed. Serving the
+   page with `Cache-Control: no-store` plus a per-visit cache-busting query is
+   not enough on its own; the proxy must also **rewrite stale host and app ids**
+   so a remembered URL still works.
+5. **MDC over RJ45 did not answer**, on six panels, device IDs 0 to 3, both
+   read commands, before and after `ID Settings -> PC Connection Cable -> RJ45`
+   and a power cycle. Port 1515 accepts the connection and says nothing to MDC
+   framing, a newline, or HTTP. Note that ID `0xFE` is broadcast and never
+   ACKs by design, so it cannot be used to probe. Remote URL Launcher
+   configuration therefore remains unavailable; treat MDC as unproven here.
+6. **Custom App Launcher expects a package, not a URL.** Pointing it at a web
+   page gives "unable to download app". The package route needs
+   `sssp_config.xml` plus a `.wgt` in one folder, and Samsung's guidance is
+   that displays **reject unsigned packages even in developer mode**, so a
+   Samsung distributor certificate is unavoidable for an installed app.
+
+### Still not observed
+
+Touch landing correctly, kiosk return after a power cycle, decode beyond
+720p30, multi-contact behaviour, soak stability, portrait operation, and
+anything at all on QM55B-T. Do not mark either model supported.

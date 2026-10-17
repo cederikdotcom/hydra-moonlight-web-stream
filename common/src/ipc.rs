@@ -23,11 +23,16 @@ use crate::{
 pub struct StreamerConfig {
     pub webrtc: WebRtcConfig,
     pub log_level: LevelFilter,
+    #[serde(default)]
+    pub managed_signage: bool,
 }
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ServerIpcMessage {
+    // Older streamers must reject this envelope rather than silently ignore a
+    // new config flag and resume an unrelated running application.
+    InitManaged(Box<ServerIpcMessage>),
     Init {
         config: StreamerConfig,
         host_address: String,

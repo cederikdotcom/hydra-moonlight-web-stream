@@ -1,6 +1,6 @@
 use std::{
     process::Stdio,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     time::Duration,
 };
 
@@ -27,6 +27,16 @@ use crate::app::{
     user::AuthenticatedUser,
 };
 
+// One managed streamer per isolated relay process. Hold admission through child
+// termination, not merely until the browser socket disconnects.
+static MANAGED_STREAM_ACTIVE: AtomicBool = AtomicBool::new(false);
+struct ManagedStreamPermit;
+impl Drop for ManagedStreamPermit {
+    fn drop(&mut self) {
+        MANAGED_STREAM_ACTIVE.store(false, Ordering::Release);
+    }
+}
+
 #[get("/host/stream")]
 #[instrument(name = "start_host", skip(web_app, user, payload), fields(user_id = %user.id()))]
 pub async fn start_host(
@@ -35,6 +45,17 @@ pub async fn start_host(
     request: HttpRequest,
     payload: Payload,
 ) -> Result<HttpResponse, Error> {
+    let managed_permit = if web_app.config().managed_signage.is_some() {
+        if MANAGED_STREAM_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Ok(HttpResponse::Conflict().finish());
+        }
+        Some(ManagedStreamPermit)
+    } else {
+        None
+    };
     let (response, mut session, mut stream) = actix_ws::handle(&request, payload)?;
 
     let client_unique_id = user.host_unique_id().await?;
@@ -119,6 +140,31 @@ pub async fn start_host(
             }
         };
 
+        let (address, http_port) = match host.address_port(&mut user).await {
+            Ok(address_port) => address_port,
+            Err(err) => {
+                warn!("failed to start stream for host {host_id:?} (at get address_port): {err}");
+
+                let _ = send_ws_message(
+                    &mut session,
+                    StreamServerMessage::DebugLog {
+                        message: "Failed to start stream because of a server error".to_string(),
+                        ty: Some(LogMessageType::FatalDescription),
+                    },
+                )
+                .await;
+                let _ = session.close(None).await;
+                return;
+            }
+        };
+
+        if let Some(policy) = &web_app.config().managed_signage {
+            if !policy.allows_endpoint(&address, http_port) {
+                let _ = session.close(None).await;
+                return;
+            }
+        }
+
         let apps = match host.list_apps(&mut user).await {
             Ok(apps) => apps,
             Err(err) => {
@@ -137,6 +183,16 @@ pub async fn start_host(
             }
         };
 
+        if let Some(policy) = &web_app.config().managed_signage {
+            if !policy.allows_app(
+                app_id.0,
+                apps.iter().map(|app| (app.id.0, app.title.as_str())),
+            ) {
+                let _ = session.close(None).await;
+                return;
+            }
+        }
+
         let Some(app) = apps.into_iter().find(|app| app.id == app_id) else {
             warn!("failed to start stream for host {host_id:?} because the app couldn't be found!");
 
@@ -150,24 +206,6 @@ pub async fn start_host(
             .await;
             let _ = session.close(None).await;
             return;
-        };
-
-        let (address, http_port) = match host.address_port(&mut user).await {
-            Ok(address_port) => address_port,
-            Err(err) => {
-                warn!("failed to start stream for host {host_id:?} (at get address_port): {err}");
-
-                let _ = send_ws_message(
-                    &mut session,
-                    StreamServerMessage::DebugLog {
-                        message: "Failed to start stream because of a server error".to_string(),
-                        ty: Some(LogMessageType::FatalDescription),
-                    },
-                )
-                .await;
-                let _ = session.close(None).await;
-                return;
-            }
         };
 
         let pair_info = match host.pair_info(&mut user).await {
@@ -270,6 +308,7 @@ pub async fn start_host(
         spawn({
             let mut ipc_sender = ipc_sender.clone();
             async move {
+                let _managed_permit = managed_permit;
                 let mut warned_closed = false;
                 while let Some(message) = ipc_receiver.recv().await {
                     match message {
@@ -319,42 +358,75 @@ pub async fn start_host(
         });
 
         // Send init into ipc
-        ipc_sender
-            .send(ServerIpcMessage::Init {
-                config: StreamerConfig {
-                    webrtc: web_app.config().webrtc.clone(),
-                    log_level: web_app.config().log.level_filter,
-                },
-                host_address: address,
-                host_http_port: http_port,
-                client_unique_id: Some(client_unique_id),
-                client_private_key: pair_info.client_private_key,
-                client_certificate: pair_info.client_certificate,
-                server_certificate: pair_info.server_certificate,
-                app_id: app_id.0,
-                video_frame_queue_size,
-                audio_sample_queue_size,
-            })
-            .await;
+        let init = ServerIpcMessage::Init {
+            config: StreamerConfig {
+                webrtc: web_app.config().webrtc.clone(),
+                log_level: web_app.config().log.level_filter,
+                managed_signage: false,
+            },
+            host_address: address,
+            host_http_port: http_port,
+            client_unique_id: Some(client_unique_id),
+            client_private_key: pair_info.client_private_key,
+            client_certificate: pair_info.client_certificate,
+            server_certificate: pair_info.server_certificate,
+            app_id: app_id.0,
+            video_frame_queue_size: if web_app.config().managed_signage.is_some() {
+                3
+            } else {
+                video_frame_queue_size
+            },
+            audio_sample_queue_size: if web_app.config().managed_signage.is_some() {
+                20
+            } else {
+                audio_sample_queue_size
+            },
+        };
+        let init = if web_app.config().managed_signage.is_some() {
+            ServerIpcMessage::InitManaged(Box::new(init))
+        } else {
+            init
+        };
+        ipc_sender.send(init).await;
 
         // Redirect ws message into ipc
+        let mut managed_state = common::managed_signage::ManagedSignalingState::default();
         while let Some(Ok(message)) = stream.recv().await {
             match message {
                 Message::Text(text) => {
                     let Ok(message) = serde_json::from_str::<StreamClientMessage>(&text) else {
                         warn!("[Stream]: failed to deserialize from json");
+                        if web_app.config().managed_signage.is_some() {
+                            ipc_sender.send(ServerIpcMessage::Stop).await;
+                        }
                         return;
                     };
 
+                    let message = if let Some(policy) = &web_app.config().managed_signage {
+                        let Some(message) = managed_state.constrain(policy, message) else {
+                            ipc_sender.send(ServerIpcMessage::Stop).await;
+                            return;
+                        };
+                        message
+                    } else {
+                        message
+                    };
                     ipc_sender.send(ServerIpcMessage::WebSocket(message)).await;
                 }
                 Message::Binary(binary) => {
+                    if web_app.config().managed_signage.is_some() {
+                        ipc_sender.send(ServerIpcMessage::Stop).await;
+                        return;
+                    }
                     ipc_sender
                         .send(ServerIpcMessage::WebSocketTransport(binary))
                         .await;
                 }
                 _ => {}
             }
+        }
+        if web_app.config().managed_signage.is_some() {
+            ipc_sender.send(ServerIpcMessage::Stop).await;
         }
     });
 
@@ -371,9 +443,13 @@ async fn send_ws_message(sender: &mut Session, message: StreamServerMessage) -> 
 
 #[post("/host/cancel")]
 pub async fn cancel_host(
+    web_app: Data<App>,
     mut user: AuthenticatedUser,
     Json(request): Json<PostCancelRequest>,
 ) -> Result<Json<PostCancelResponse>, AppError> {
+    if web_app.config().managed_signage.is_some() {
+        return Err(AppError::Forbidden);
+    }
     let host_id = HostId(request.host_id);
 
     let mut host = user.host(host_id).await?;
@@ -381,4 +457,16 @@ pub async fn cancel_host(
     host.cancel_app(&mut user).await?;
 
     Ok(Json(PostCancelResponse { success: true }))
+}
+
+// A worker must verify this capability and exact policy before returning a
+// managed stream URL. Older builds ignore unknown configuration fields.
+#[get("/managed-signage")]
+pub async fn managed_signage_policy(web_app: Data<App>, _user: AuthenticatedUser) -> HttpResponse {
+    match &web_app.config().managed_signage {
+        Some(policy) => HttpResponse::Ok()
+            .insert_header(("Cache-Control", "no-store"))
+            .json(serde_json::json!({"policy": policy, "launch_only": true})),
+        None => HttpResponse::NotFound().finish(),
+    }
 }

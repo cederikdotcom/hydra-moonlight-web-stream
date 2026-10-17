@@ -21,21 +21,24 @@ jobs:
         with:
           submodules: recursive
 
+      # Honor rust-toolchain.toml: current nightly breaks printf-compat's VaList API.
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: nightly
       - uses: Swatinem/rust-cache@v2
 
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Test standalone browser diagnostics
+      - name: Install browser test dependencies
+        run: npm ci
+      - name: Test browser input and diagnostics
         run: |
           node --check web/signage-probe.js
           npm test
   
       - name: Test
         run: cargo test --workspace --locked
+      - name: Check browser with generated bindings
+        run: npm run build-light
 
   build:
     needs: test
@@ -71,8 +74,6 @@ jobs:
   
     # Install rust
     - uses: actions-rust-lang/setup-rust-toolchain@v1
-      with:
-        toolchain: nightly
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: cross-${{ matrix.target }}

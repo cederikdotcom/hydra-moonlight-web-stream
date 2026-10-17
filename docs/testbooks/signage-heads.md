@@ -26,6 +26,45 @@ Samsung panels' Tizen 6.5. A prior `done` status is not an acceptance result.
 - NOT RUN: APK/WGT build or installation, live body/relay streaming and every
   target-device acceptance gate below. No production deployment performed.
 
+## Issue 770 shared-input checks (2026-10-13)
+
+- PASS locally: `node --test tests/*.test.cjs`: 22 tests, comprising the existing
+  eight probe checks and fourteen production browser-input tests. The latest
+  three tests cover immediate absolute mouse dragging/release, ignored secondary
+  contacts/cancel and explicit per-session mode selection. Full CI run
+  [38411624488](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38411624488)
+  passed at `5429233`, including Rust tests, TypeScript generated-binding build
+  and all four platform artifact builds. The input suite
+  transpiles the real TypeScript modules with the pinned TypeScript dependency;
+  browser APIs and generated enum bindings are fixtures. Packet bytes are
+  decoded independently of the production serializer.
+- PASS: native down/move/up/cancel, simultaneous contacts, invalid/orphan input,
+  out-of-bounds and hidden-frame releases, portrait/letterbox coordinates,
+  cancellation without click, drag release, delayed-tap cancellation, held and
+  simultaneous keys, focus recovery, closed-channel cleanup, listener removal,
+  mouse buttons/wheel/relative movement and sparse gamepad slots.
+- PASS in CI: Rust relay decoder tests for all four event codes,
+  legacy cancel compatibility, packet fields, truncated and unknown messages.
+- BLOCKED locally: full TypeScript checking needs generated Rust bindings;
+  `tsc --noEmit` reports missing `web/api_bindings.js` plus downstream errors.
+  No full local Rust build attempted given disk constraints. Existing CI is
+  the intended full build check; its earlier `printf-compat` failure remains
+  separate from these passing browser tests. CI run 38408489812 passed all 19
+  browser tests and reproduced the same `printf-compat`/`VaList::arg` failure.
+  Follow-up removes CI's moving-nightly override so it honors the existing
+  `nightly-2026-02-13` repository pin, and checks TypeScript after bindings are
+  generated. Rerun 38409021061 at commit 7fb21b3 passed the complete Rust test
+  suite, TypeScript build and all four platform builds (Windows x86_64 GNU,
+  Linux x86_64 GNU, Linux aarch64 GNU and musl). Versioned CI artifacts are
+  available on that run; these are relay/browser artifacts, not a signed WGT.
+  Release publication and Docker publication were skipped. No deployment ran.
+- NOT RUN: physical peripherals, real relay/body input delivery, Tizen runtime,
+  WGT signing/install/update and every model/firmware gate below.
+
+Run `npm ci` on a build worker before `npm test`; the new input suite uses the
+repository's existing pinned TypeScript dependency. When working in an isolated
+local worktree, reuse installed dependencies without modifying another checkout.
+
 ## Before hardware arrives
 
 From this repository:
@@ -136,3 +175,69 @@ Support decision: experimental / accepted for these settings / rejected
 
 Only mark a model supported after its required gates pass. Keep untested models
 explicitly unverified even when they share an OS or product family.
+
+Managed signage policy tests cover exact body/app admission, missing/duplicate
+app rejection, landscape/portrait bounds, removal of HDR/wide-codec/4K/high-rate
+client settings, unsupported codec/transport rejection and one-time ordered
+transport/start signaling. These are server policy tests, not a complete neck
+adapter or physical media test.
+
+Policy commit `164628a` passed all policy/browser/Rust tests, TypeScript checking
+and four platform builds in run 38417702105. Follow-up launch-only integration
+pins moonlight-common revision `77390b6` and uses a distinct managed IPC envelope;
+full consumer CI passed at `ba7b38a` in [run 38421357390](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38421357390), including
+Rust/browser tests, TypeScript and all four Linux/Windows platform builds.
+
+The dependency maintenance PR targets `maintenance/signage-a04b3085`, preserving
+the consumer's pinned API. Its two new launch-only tests pass, and same-run
+baseline comparison confirms the same four pre-existing pairing/request test
+failures with no new failures. [Run 38422401077](https://github.com/cederikdotcom/moonlight-common-rust/actions/runs/38422401077) passed at `cf32f0c`. This is
+regression evidence; the full dependency suite is not all green.
+
+Abortable event listener compatibility now has ten independent DOM fixture tests:
+native AbortController with unsupported listener signals, frozen/inherited options,
+capture, pre-aborted signals, once/reentrant dispatch, manual removal/re-registration,
+duplicate registration, abort during dispatch, missing AbortController and working
+native support. All 32 browser tests and strict standalone TypeScript checking pass
+locally. These model older DOM behavior; exact Samsung firmware remains NOT RUN.
+
+Abortable listener change `07fbe61` passed all browser/Rust tests, generated-binding
+TypeScript checking and all four platform builds in [CI 38433852146](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38433852146).
+Release and deployment jobs were skipped. Device gates remain NOT RUN.
+
+## Device results, QM43B-T, 2026-10-17
+
+First execution against target hardware. Panels at the mobile kit, body on GCP
+(Sunshine 2026.914), relay on the kit laptop.
+
+| Test | Result | Evidence |
+|---|---|---|
+| Panel joins the venue network | PASS, after setting its menu to wired | Six QMB leases on the kit MikroTik, Samsung OUIs |
+| Model and capability readable | PASS | `GET :8001/api/v2/` returns `modelName` QM43B-T / QM43B, platform `22_PONTUSM_LFD` |
+| Pair a GameStream client with the body | PASS on retry | Sunshine named_certs gained `moonlight-web-msi`; first PIN POST returns `status:false`, the retry succeeds |
+| WASM software decode (openh264, opus) | **FAIL, unfixable on this firmware** | `instantiateStreaming` throws `CompileError: return count of 2 exceeds that of 1` (multi-value returns) |
+| Hardware video path, WebRTC track into a video element | PASS | `rupelmonde-castle-viewer` visible on the panel; Sunshine reported `server_state: Busy` |
+| Page loads without a session cookie | PASS, via header auth | Panel stores no cookies at all, proven by echoing its `Cookie` header: `(none)` |
+| Touch lands where touched | **FAIL in the default mode** | Page defaults `touchMode` to `mouseRelative`; needs `?signageInput=absoluteMouse` or `touch` |
+| MDC over RJ45 | FAIL / unproven | Silent on six panels, IDs 0-3, both read commands, before and after enabling RJ45 and a power cycle |
+| Install an unsigned package | NOT ATTEMPTED, expected to fail | Samsung guidance: unsigned packages rejected even in developer mode |
+| Kiosk return after power cycle | NOT RUN | |
+| 1080p60, multi-contact, soak, portrait, QM55B-T | NOT RUN | |
+
+Neither QM43B-T nor QM55B-T is certified by these results. #769 stays open.
+
+### How to reproduce the working path
+
+1. Panel menu: network to **wired**.
+2. A relay that can reach the body's Sunshine and that the panel can reach. On
+   a laptop body that means opening the venue subnet in its firewall, including
+   a fixed WebRTC media range, for example `50000:50100/udp`.
+3. Pair the relay with the body: `POST /api/pair` for the PIN, then
+   `GET https://<body>:47990/api/pin` to read the pending entry's 32-hex
+   `pairing_id`, matching on the source address, then `POST` the pin with that
+   `pairing_id`. Expect to retry once.
+4. Serve the page with header auth and no cookies, and force
+   `signageInput=absoluteMouse` plus the hardware renderer.
+5. Point the panel at the bare address. Expect its browser to fight you with
+   cached pages and autocompleted URLs; rewriting ids server side is what
+   finally made it reliable.
