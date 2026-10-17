@@ -204,3 +204,40 @@ locally. These model older DOM behavior; exact Samsung firmware remains NOT RUN.
 Abortable listener change `07fbe61` passed all browser/Rust tests, generated-binding
 TypeScript checking and all four platform builds in [CI 38433852146](https://github.com/cederikdotcom/hydra-moonlight-web-stream/actions/runs/38433852146).
 Release and deployment jobs were skipped. Device gates remain NOT RUN.
+
+## Device results, QM43B-T, 2026-10-17
+
+First execution against target hardware. Panels at the mobile kit, body on GCP
+(Sunshine 2026.914), relay on the kit laptop.
+
+| Test | Result | Evidence |
+|---|---|---|
+| Panel joins the venue network | PASS, after setting its menu to wired | Six QMB leases on the kit MikroTik, Samsung OUIs |
+| Model and capability readable | PASS | `GET :8001/api/v2/` returns `modelName` QM43B-T / QM43B, platform `22_PONTUSM_LFD` |
+| Pair a GameStream client with the body | PASS on retry | Sunshine named_certs gained `moonlight-web-msi`; first PIN POST returns `status:false`, the retry succeeds |
+| WASM software decode (openh264, opus) | **FAIL, unfixable on this firmware** | `instantiateStreaming` throws `CompileError: return count of 2 exceeds that of 1` (multi-value returns) |
+| Hardware video path, WebRTC track into a video element | PASS | `rupelmonde-castle-viewer` visible on the panel; Sunshine reported `server_state: Busy` |
+| Page loads without a session cookie | PASS, via header auth | Panel stores no cookies at all, proven by echoing its `Cookie` header: `(none)` |
+| Touch lands where touched | **FAIL in the default mode** | Page defaults `touchMode` to `mouseRelative`; needs `?signageInput=absoluteMouse` or `touch` |
+| MDC over RJ45 | FAIL / unproven | Silent on six panels, IDs 0-3, both read commands, before and after enabling RJ45 and a power cycle |
+| Install an unsigned package | NOT ATTEMPTED, expected to fail | Samsung guidance: unsigned packages rejected even in developer mode |
+| Kiosk return after power cycle | NOT RUN | |
+| 1080p60, multi-contact, soak, portrait, QM55B-T | NOT RUN | |
+
+Neither QM43B-T nor QM55B-T is certified by these results. #769 stays open.
+
+### How to reproduce the working path
+
+1. Panel menu: network to **wired**.
+2. A relay that can reach the body's Sunshine and that the panel can reach. On
+   a laptop body that means opening the venue subnet in its firewall, including
+   a fixed WebRTC media range, for example `50000:50100/udp`.
+3. Pair the relay with the body: `POST /api/pair` for the PIN, then
+   `GET https://<body>:47990/api/pin` to read the pending entry's 32-hex
+   `pairing_id`, matching on the source address, then `POST` the pin with that
+   `pairing_id`. Expect to retry once.
+4. Serve the page with header auth and no cookies, and force
+   `signageInput=absoluteMouse` plus the hardware renderer.
+5. Point the panel at the bare address. Expect its browser to fight you with
+   cached pages and autocompleted URLs; rewriting ids server side is what
+   finally made it reliable.

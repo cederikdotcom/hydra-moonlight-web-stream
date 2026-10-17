@@ -413,3 +413,85 @@ receive a capture-aware cleanup shim; working native support is preserved. This
 prevents old input listeners surviving a stream reconnect on those engines. The
 shim also preserves once behavior and does not mutate caller options. This is
 compatibility preparation, not a Tizen firmware support claim.
+
+## Observed on real QM43B-T hardware, 2026-10-17
+
+First contact with the target panels, at the mobile kit. Six Samsung QMB panels
+on the venue LAN: `.161` QM43B (non-touch), `.162` and `.163` QM43B-T (touch),
+three more QMB whose exact model was not read. All report platform
+`22_PONTUSM_LFD`, Tizen, wired, 3840x2160, `developerMode: 0`. Model and
+capability come from the panel's own API, `GET http://<ip>:8001/api/v2/`, which
+is the only reliable way to tell a QM43B from a QM43B-T: DHCP reports both as
+"Samsung QMB Series".
+
+**A stream reached a panel.** `rupelmonde-castle-viewer` ran from a cloud body
+(GCP, Windows, Sunshine 2026.914) over WireGuard, through a moonlight-web relay
+on the kit laptop, into the panel's browser. Sunshine reported
+`server_state: Busy` while it played. This is the first time any Samsung panel
+has displayed a Hydra stream.
+
+### The software decode path is impossible on this firmware
+
+Tizen 6.5 is Chromium M85, and its engine **rejects the WASM decoders
+outright**: `WebAssembly.instantiateStreaming` throws
+`CompileError: return count of 2 exceeds that of 1`. The modules use
+multi-value returns. This is a property of the engine, not a setting, so no
+configuration avoids it:
+
+- `libopenh264` (software H.264) and `libopus` (audio) both fail to compile.
+- The opus glue was a value import, so it was evaluated on page load and the
+  page died before any capability check ran. Fixed in
+  `web/stream/audio/opus_decoder_pipe.ts`: type-only import, dynamic import at
+  use, and a `getInfo()` that proves the module instantiates. Importing alone
+  does not detect the fault; instantiating does.
+- Consequence: a browser-class head on Tizen 6.5 can only use the **hardware**
+  path, a WebRTC track rendered into a video element
+  (`forceVideoElementRenderer`). WebCodecs is absent too. Treat software decode
+  as unavailable on QMB-T, permanently.
+
+### Touch needs the mode set explicitly
+
+The stream page defaults `touchMode` to `mouseRelative`, which on a touch panel
+moves the cursor relatively instead of landing where the finger lands. It reads
+as "touch is broken". The page accepts `?signageInput=absoluteMouse` or
+`?signageInput=touch`; the mediator must set it per session, from the head's
+recorded input mode. Nothing is wrong with the panel's digitiser if touch feels
+dead: check this first.
+
+### What blocked the stream, in the order it bit us
+
+Each of these cost real time at the venue and none was a Samsung fault:
+
+1. **A QMB panel does not join the network** until its own menu is set to
+   **wired**. Before that it is invisible to the router, so no scan can find it.
+2. **The laptop's ufw** allowed inbound only from `10.10.0.0/16`, the WireGuard
+   range. The kit LAN is `10.110.0.0/20`, so the panel could reach the internet
+   but not a machine beside it. Symptom: "server not found" on the panel while
+   the laptop could reach the panel perfectly.
+3. **The panel's browser stores no cookies.** A `/check` page that echoed the
+   request's `Cookie` header proved it: `(none)`. Session-cookie auth cannot
+   work on these panels. The relay's `web_server.forwarded_header.username_header`
+   with a header-injecting proxy in front is the route that does.
+   `default_user_id` is ignored by the 3.0.0-prerelease.9 build.
+4. **The browser autocompletes aggressively from history** and will keep
+   loading a cached page and a stale URL no matter what is typed. Serving the
+   page with `Cache-Control: no-store` plus a per-visit cache-busting query is
+   not enough on its own; the proxy must also **rewrite stale host and app ids**
+   so a remembered URL still works.
+5. **MDC over RJ45 did not answer**, on six panels, device IDs 0 to 3, both
+   read commands, before and after `ID Settings -> PC Connection Cable -> RJ45`
+   and a power cycle. Port 1515 accepts the connection and says nothing to MDC
+   framing, a newline, or HTTP. Note that ID `0xFE` is broadcast and never
+   ACKs by design, so it cannot be used to probe. Remote URL Launcher
+   configuration therefore remains unavailable; treat MDC as unproven here.
+6. **Custom App Launcher expects a package, not a URL.** Pointing it at a web
+   page gives "unable to download app". The package route needs
+   `sssp_config.xml` plus a `.wgt` in one folder, and Samsung's guidance is
+   that displays **reject unsigned packages even in developer mode**, so a
+   Samsung distributor certificate is unavoidable for an installed app.
+
+### Still not observed
+
+Touch landing correctly, kiosk return after a power cycle, decode beyond
+720p30, multi-contact behaviour, soak stability, portrait operation, and
+anything at all on QM55B-T. Do not mark either model supported.
